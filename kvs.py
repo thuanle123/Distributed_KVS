@@ -8,6 +8,7 @@ import json
 import os
 import sys
 import requests
+import hashlib #to do hashing
 
 UNAUTHED_REPLICA_ORIGIN = {'error': 'Request must originate from a replica in the view'}
 VIEW_PUT_SOCKET_EXISTS = {
@@ -32,6 +33,9 @@ replicas_view_alive = {my_address}
 replicas_view_alive_filename = heartbeat.FILENAME
 replicas_view_alive_last_read = float('-inf') # When was the last time we read from alive?  Initially never read.
 
+SHARD_COUNT = 2 #pdf
+shards = [[] for _ in range(SHARD_COUNT)]
+shard_id = None
 
 def startup():
     update_vector_clock_file()
@@ -56,6 +60,19 @@ def startup():
     update_replicas_view_alive()
     pull_state()
 
+# add a node to shard
+# add to a shard with a fewest nodes first
+# i think the parameter is correct
+def add_to_shard(ip):
+    pass
+
+# delete a node from a shard
+def delete_from_shard(ip):
+    pass
+
+# this only execute if CLIENT requests it
+def rebalance_shard(ip):
+    pass
 
 
 def pull_state(ip=None):
@@ -391,11 +408,6 @@ def kvs_delete(key):
 
 @app.route(route('-view'), methods=['GET'])
 def view_get():
-    # In the partial script from Reza
-    # he has http://localhost send a GET request
-    # in section he also said it doesn't need
-    # to be from a replica to another replica (like in the SPEC)
-    # so i will comment this out for now
     #if not is_replica(request.remote_addr):
     #   return jsonify(UNAUTHED_REPLICA_ORIGIN), 401
 
