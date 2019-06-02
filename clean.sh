@@ -3,6 +3,7 @@
 # Need to modify
 set -x
 
+docker network rm mynet
 replicas=$(docker container ls -aq)
 if [ -z "$replicas" ]; then
     exit 0
