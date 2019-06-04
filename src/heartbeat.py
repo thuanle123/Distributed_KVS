@@ -1,14 +1,13 @@
-from network import multicast, unicast
-from view import init_view
+from src.network import multicast, unicast
+import src.view
 import concurrent.futures
 import json
 import logging
 import os
 import time
 
-
 MY_ADDRESS = os.environ['SOCKET_ADDRESS']
-ADDRESSES = init_view()
+ADDRESSES = src.view.init_view()
 FILENAME = '.alive.json'
 ENDPOINT = '/heartbeat'
 INTERVAL = 5  # Run a heartbeat every 0.01 seconds.

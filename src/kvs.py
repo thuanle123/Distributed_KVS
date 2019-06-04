@@ -5,7 +5,7 @@ import json
 
 # Project Level Imports
 import src.app
-# from src.app import store, delivery_buffer, vector_clock, update_vector_clock_file, update_replicas_view_alive, replicas_view_alive, my_address, my_address_no_port, replicas_view_no_port
+from src.app import app
 from src.view import can_be_delivered, update_replicas_view_alive
 from src.network import multicast, HTTPMethods
 from src.routes import route

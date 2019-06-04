@@ -1,6 +1,6 @@
 # Package and Lib Imports
 import os
-from flask import abort, Flask, request, jsonify, Response
+from flask import app, abort, Flask, request, jsonify, Response
 
 # add a node to shard
 # add to a shard with a fewest nodes first
@@ -12,9 +12,10 @@ shard_id = None
 
 
 def add_to_shard():
-    #position = 0
+    # position = 0
     # shards[position].append(ip)
     pass
+
 
 # delete a node from a shard
 
@@ -22,12 +23,14 @@ def add_to_shard():
 def delete_from_shard():
     pass
 
+
 # this only execute if CLIENT requests it
 # IDEA: remove a shard from a max node and add it into a min node
 
 
 def rebalance_shard():
     pass
+
 
 # Add all the route here so we don't have to scroll
 # move it down when we are done
@@ -48,6 +51,7 @@ def shard_id_get():
     }), 200
     # pass
 
+
 # Get the shard IDs of a node
 @app.route(route_shard('/node-shard-id'), methods=['GET'])
 def node_id_get():
@@ -58,12 +62,13 @@ def node_id_get():
     })
     # pass
 
+
 # Get the members of a shard ID
 # @app.route(route_shard('/shard-id-members/<shard-id>'), methods=['GET'])
 
 
 def member_id_get(member_id):
-    #member_id = int(shard_id)
+    # member_id = int(shard_id)
     # http://<node-socket-address>/key-value-store-shard/shard-id-members/<shard-id>
     # {"message":"Members of shard ID retrieved successfully", "shard-id-members":<shard-id-members>} 200
     # return jsonify({
@@ -71,6 +76,7 @@ def member_id_get(member_id):
     #   'shard-id-members': #VIEW of the -view
     #   })
     pass
+
 
 # Get the number of keys stored in a shard
 # @app.route(route_shard('/shard-id-key-count/<shard-id>'), methods=['GET'])

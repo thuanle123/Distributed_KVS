@@ -1,4 +1,4 @@
 #!/bin/bash
 
-pipenv run python heartbeat.py > heartbeat.log 2>&1 &
-pipenv run python kvs.py
+pipenv run python ./src/heartbeat.py > heartbeat.log 2>&1 &
+pipenv run python ./src/app.py

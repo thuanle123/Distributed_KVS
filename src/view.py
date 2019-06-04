@@ -7,11 +7,14 @@ import os
 
 # Project Level Imports
 import src.app
-from src.app import vector_clock, delivery_buffer, store, replicas_view_alive
+from src.app import app
+
+# from src.state import vector_clock, delivery_buffer, store, replicas_view_alive
+import src.state
+import src.heartbeat
 from src.network import HTTPMethods
 from src.network import multicast
 from src.routes import route
-
 
 UNAUTHED_REPLICA_ORIGIN = {
     'error': 'Request must originate from a replica in the view'}
@@ -51,8 +54,8 @@ def pull_state(ip=None):
             return
         return
 
-    other_replicas = src.app.replicas_view_alive.difference(
-        {src.app.my_address})
+    other_replicas = src.state.replicas_view_alive.difference(
+        {src.state.my_address})
     if len(other_replicas) <= 0:
         return
 
@@ -78,7 +81,7 @@ def pull_state(ip=None):
 
 def is_replica(ip):
     replica_ips = {address.split(':')[0]
-                   for address in src.app.replicas_view_universe}
+                   for address in src.state.replicas_view_universe}
     return ip in replica_ips
 
 
@@ -86,12 +89,12 @@ def update_replicas_view_alive():
     global replicas_view_alive
     try:
         modified_since_read = os.path.getmtime(
-            src.app.replicas_view_alive_filename) >= src.app.replicas_view_alive_last_read
+            src.state.replicas_view_alive_filename) >= src.state.replicas_view_alive_last_read
         if not modified_since_read:
             return
 
         old_view = replicas_view_alive
-        with open(src.app.replicas_view_alive_filename, 'r') as f:
+        with open(src.state.replicas_view_alive_filename, 'r') as f:
             replicas_view_alive = set(json.load(f))
             deleted_replicas = old_view.difference(replicas_view_alive)
             added_replicas = replicas_view_alive.difference(old_view)
@@ -129,16 +132,16 @@ def update_replicas_view_alive():
     except (FileNotFoundError, IOError):
         replicas_view_alive = set()
 
-    replicas_view_alive.add(src.app.my_address)
+    replicas_view_alive.add(src.state.my_address)
 
 
 def broadcast_add_replica():
     return multicast(
-        src.app.replicas_view_universe,
+        src.state.replicas_view_universe,
         lambda address: 'http://' + address + route('-view'),
         http_method=HTTPMethods.PUT,
         timeout=1,
-        data=json.dumps({'socket-address': src.app.my_address}),
+        data=json.dumps({'socket-address': src.state.my_address}),
         headers={'Content-Type': 'application/json'}
     )
 
@@ -179,18 +182,18 @@ def view_get():
 def add_replica_alive(new_address):
     global replicas_view_alive
     try:
-        with open(src.app.replicas_view_alive_filename, 'r+') as f:
+        with open(src.state.replicas_view_alive_filename, 'r+') as f:
             # Update current alive set.
             replicas_view_alive = set(json.load(f))
-            replicas_view_alive.add(src.app.my_address)
+            replicas_view_alive.add(src.state.my_address)
             replicas_view_alive.add(new_address)
 
             f.truncate(0)
             f.seek(0)
             json.dump(list(replicas_view_alive), f)  # Add replica.
     except (FileNotFoundError, IOError):
-        with open(src.app.replicas_view_alive_filename, 'w') as f:
-            replicas_view_alive = {src.app.my_address, new_address}
+        with open(src.state.replicas_view_alive_filename, 'w') as f:
+            replicas_view_alive = {src.state.my_address, new_address}
             json.dump(list(replicas_view_alive), f)
 
 
@@ -204,7 +207,7 @@ def view_put():
 
     update_replicas_view_alive()
 
-    if target == src.app.my_address:
+    if target == src.state.my_address:
         pull_state()
 
     if target in replicas_view_alive:
@@ -237,13 +240,13 @@ def view_delete():
         }), 404
 
 
-@app.route(heartbeat.ENDPOINT, methods=['GET'])
+@app.route('/heartbeat', methods=['GET'])
 def heartbeat_get():
     incoming_vec = json.loads(request.headers.get('VC'))
     incoming_addr = request.remote_addr
 
     incoming_addr_with_port = None
-    for addr_with_port in src.app.replicas_view_universe:
+    for addr_with_port in src.state.replicas_view_universe:
         addr = addr_with_port.split(':')[0]
         if addr == incoming_addr:
             incoming_addr_with_port = addr_with_port
@@ -252,7 +255,7 @@ def heartbeat_get():
     if not sender_is_replica:
         return jsonify({'status': 'OK'}), 200
 
-    previous_vecs = src.app.previously_received_vector_clocks[incoming_addr]
+    previous_vecs = src.state.previously_received_vector_clocks[incoming_addr]
     steady_state = all(
         [incoming_vec == previous_vec for previous_vec in previous_vecs])
     if steady_state:
@@ -260,9 +263,10 @@ def heartbeat_get():
             pull_state(ip=incoming_addr_with_port)
 
     # Double ended queue.  Dequeue last VC from the beginning if at capacity.  Enqueue incoming VC to the end.
-    if (len(src.app.previously_received_vector_clocks[incoming_addr]) > src.app.previously_received_vector_clocks_CAPACITY):
-        del src.app.previously_received_vector_clocks[incoming_addr][0]
-    src.app.previously_received_vector_clocks[incoming_addr].append(
+    if (len(src.state.previously_received_vector_clocks[
+                incoming_addr]) > src.state.previously_received_vector_clocks_CAPACITY):
+        del src.state.previously_received_vector_clocks[incoming_addr][0]
+    src.state.previously_received_vector_clocks[incoming_addr].append(
         incoming_vec)
 
     return jsonify({'status': 'OK'}), 200

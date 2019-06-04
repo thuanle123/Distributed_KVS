@@ -7,6 +7,7 @@ ADD . /usr/src/catiline
 
 RUN pip3 install --user pipenv
 ENV PATH="/root/.local/bin:${PATH}"
+ENV PYTHONPATH=/usr/src/catiline
 RUN pipenv install
 
 EXPOSE 8080

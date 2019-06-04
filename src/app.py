@@ -1,9 +1,5 @@
-# Package and Lib Imports
-from collections import defaultdict
 from flask import abort, Flask, request, jsonify, Response
-from network import HTTPMethods, multicast
 import concurrent.futures
-import heartbeat
 import json
 import os
 import sys
@@ -11,33 +7,21 @@ import requests
 import hashlib  # to do hashing
 
 # Project Level Imports
+import src.state
+import src.heartbeat
+# from src.network import
 from src.routes import route, route_shard
-from src.view import VIEW_PUT_SOCKET_EXISTS, update_replicas_view_alive, pull_state, broadcast_add_replica
-
+from src.network import HTTPMethods, multicast
+import src.view
+# from src.view import VIEW_PUT_SOCKET_EXISTS, update_replicas_view_alive, pull_state, broadcast_add_replica
 
 app = Flask(__name__)
-
-store = {}
-delivery_buffer = []  # Messages received but not yet delivered.
-previously_received_vector_clocks = defaultdict(list)
-previously_received_vector_clocks_CAPACITY = 1
-
-replicas_view_universe = heartbeat.ADDRESSES
-replicas_view_no_port = [x.split(":")[0] for x in replicas_view_universe]
-vector_clock = {address: 0 for address in replicas_view_no_port}
-
-my_address = heartbeat.MY_ADDRESS
-my_address_no_port = my_address.split(":")[0]
-replicas_view_alive = {my_address}
-replicas_view_alive_filename = heartbeat.FILENAME
-# When was the last time we read from alive?  Initially never read.
-replicas_view_alive_last_read = float('-inf')
 
 
 def startup():
     update_vector_clock_file()
 
-    add_replica_fs = broadcast_add_replica()
+    add_replica_fs = src.view.broadcast_add_replica()
 
     def we_exist_in_view(unicast_response):
         http_response = unicast_response.response
@@ -45,7 +29,7 @@ def startup():
             return False
         added_to_view = http_response.status_code == 200
         preexisted = http_response.status_code == 401 and http_response.json(
-        ) == VIEW_PUT_SOCKET_EXISTS
+        ) == src.view.VIEW_PUT_SOCKET_EXISTS
         return added_to_view or preexisted
 
     # Get alive replicas from our broadcast.
@@ -56,12 +40,9 @@ def startup():
     global replicas_view_alive
     replicas_view_alive = set(
         map(lambda ur: ur.address, unicast_responses_existing))
-    replicas_view_alive.add(my_address)
-    update_replicas_view_alive()
-    pull_state()
-
-
-# Old Stuff#############3
+    replicas_view_alive.add(src.state.my_address)
+    src.view.update_replicas_view_alive()
+    src.view.pull_state()
 
 
 def determine_port():
@@ -73,7 +54,7 @@ def determine_port():
         int: The port to run on.
     """
     try:
-        port = int(my_address.split(':')[1])
+        port = int(src.state.my_address.split(':')[1])
     except Exception:
         print('Socket Error: Unable to parse port from socket argument.')
         print('Defaulting to port 8080...')
@@ -84,7 +65,7 @@ def determine_port():
 
 def update_vector_clock_file():
     with open('.vector_clock.json', 'w') as f:
-        json.dump(vector_clock, f)
+        json.dump(src.state.vector_clock, f)
 
 
 if __name__ == '__main__':
