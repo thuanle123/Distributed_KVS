@@ -2,6 +2,7 @@ from collections import defaultdict
 from flask import abort, Flask, request, jsonify, Response
 from network import HTTPMethods, multicast
 from time import sleep
+from src.routes import route, route_shard
 import concurrent.futures
 import heartbeat
 import json
@@ -163,10 +164,7 @@ def pull_state(ip=None):
             vector_clock = store_with_deliveries['vector_clock']
             return
 
-def route(r=''):
-    return '/key-value-store' + r
-def route_shard(r=''):
-    return '/key-value-store-shard' + r
+
 
 def broadcast_add_replica():
     return multicast(
