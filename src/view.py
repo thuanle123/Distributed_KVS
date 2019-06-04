@@ -51,7 +51,8 @@ def pull_state(ip=None):
             return
         return
 
-    other_replicas = src.app.replicas_view_alive.difference({src.app.my_address})
+    other_replicas = src.app.replicas_view_alive.difference(
+        {src.app.my_address})
     if len(other_replicas) <= 0:
         return
 
@@ -76,7 +77,8 @@ def pull_state(ip=None):
 
 
 def is_replica(ip):
-    replica_ips = {address.split(':')[0] for address in src.app.replicas_view_universe}
+    replica_ips = {address.split(':')[0]
+                   for address in src.app.replicas_view_universe}
     return ip in replica_ips
 
 
@@ -128,6 +130,17 @@ def update_replicas_view_alive():
         replicas_view_alive = set()
 
     replicas_view_alive.add(src.app.my_address)
+
+
+def broadcast_add_replica():
+    return multicast(
+        src.app.replicas_view_universe,
+        lambda address: 'http://' + address + route('-view'),
+        http_method=HTTPMethods.PUT,
+        timeout=1,
+        data=json.dumps({'socket-address': src.app.my_address}),
+        headers={'Content-Type': 'application/json'}
+    )
 
 
 def can_be_delivered_client(incoming_vec):
@@ -249,6 +262,7 @@ def heartbeat_get():
     # Double ended queue.  Dequeue last VC from the beginning if at capacity.  Enqueue incoming VC to the end.
     if (len(src.app.previously_received_vector_clocks[incoming_addr]) > src.app.previously_received_vector_clocks_CAPACITY):
         del src.app.previously_received_vector_clocks[incoming_addr][0]
-    src.app.previously_received_vector_clocks[incoming_addr].append(incoming_vec)
+    src.app.previously_received_vector_clocks[incoming_addr].append(
+        incoming_vec)
 
     return jsonify({'status': 'OK'}), 200

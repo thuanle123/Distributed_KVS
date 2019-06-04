@@ -12,7 +12,7 @@ import hashlib  # to do hashing
 
 # Project Level Imports
 from src.routes import route, route_shard
-from src.view import VIEW_PUT_SOCKET_EXISTS, update_replicas_view_alive, pull_state
+from src.view import VIEW_PUT_SOCKET_EXISTS, update_replicas_view_alive, pull_state, broadcast_add_replica
 
 
 app = Flask(__name__)
@@ -32,6 +32,7 @@ replicas_view_alive = {my_address}
 replicas_view_alive_filename = heartbeat.FILENAME
 # When was the last time we read from alive?  Initially never read.
 replicas_view_alive_last_read = float('-inf')
+
 
 def startup():
     update_vector_clock_file()
@@ -61,17 +62,6 @@ def startup():
 
 
 # Old Stuff#############3
-
-
-def broadcast_add_replica():
-    return multicast(
-        replicas_view_universe,
-        lambda address: 'http://' + address + route('-view'),
-        http_method=HTTPMethods.PUT,
-        timeout=1,
-        data=json.dumps({'socket-address': my_address}),
-        headers={'Content-Type': 'application/json'}
-    )
 
 
 def determine_port():
