@@ -1,8 +1,16 @@
 # Package and Lib Imports
+from flask import Flask, request, jsonify
+import concurrent.futures
+import requests
 import json
+import os
 
 # Project Level Imports
-from src.app import store, delivery_buffer, vector_clock, replicas_view_alive
+import src.app
+from src.app import vector_clock, delivery_buffer, store, replicas_view_alive
+from src.network import HTTPMethods
+from src.network import multicast
+from src.routes import route
 
 
 UNAUTHED_REPLICA_ORIGIN = {
@@ -43,7 +51,7 @@ def pull_state(ip=None):
             return
         return
 
-    other_replicas = replicas_view_alive.difference({my_address})
+    other_replicas = src.app.replicas_view_alive.difference({src.app.my_address})
     if len(other_replicas) <= 0:
         return
 
@@ -68,7 +76,7 @@ def pull_state(ip=None):
 
 
 def is_replica(ip):
-    replica_ips = {address.split(':')[0] for address in replicas_view_universe}
+    replica_ips = {address.split(':')[0] for address in src.app.replicas_view_universe}
     return ip in replica_ips
 
 
@@ -76,12 +84,12 @@ def update_replicas_view_alive():
     global replicas_view_alive
     try:
         modified_since_read = os.path.getmtime(
-            replicas_view_alive_filename) >= replicas_view_alive_last_read
+            src.app.replicas_view_alive_filename) >= src.app.replicas_view_alive_last_read
         if not modified_since_read:
             return
 
         old_view = replicas_view_alive
-        with open(replicas_view_alive_filename, 'r') as f:
+        with open(src.app.replicas_view_alive_filename, 'r') as f:
             replicas_view_alive = set(json.load(f))
             deleted_replicas = old_view.difference(replicas_view_alive)
             added_replicas = replicas_view_alive.difference(old_view)
@@ -119,7 +127,7 @@ def update_replicas_view_alive():
     except (FileNotFoundError, IOError):
         replicas_view_alive = set()
 
-    replicas_view_alive.add(my_address)
+    replicas_view_alive.add(src.app.my_address)
 
 
 def can_be_delivered_client(incoming_vec):
@@ -158,18 +166,18 @@ def view_get():
 def add_replica_alive(new_address):
     global replicas_view_alive
     try:
-        with open(replicas_view_alive_filename, 'r+') as f:
+        with open(src.app.replicas_view_alive_filename, 'r+') as f:
             # Update current alive set.
             replicas_view_alive = set(json.load(f))
-            replicas_view_alive.add(my_address)
+            replicas_view_alive.add(src.app.my_address)
             replicas_view_alive.add(new_address)
 
             f.truncate(0)
             f.seek(0)
             json.dump(list(replicas_view_alive), f)  # Add replica.
     except (FileNotFoundError, IOError):
-        with open(replicas_view_alive_filename, 'w') as f:
-            replicas_view_alive = {my_address, new_address}
+        with open(src.app.replicas_view_alive_filename, 'w') as f:
+            replicas_view_alive = {src.app.my_address, new_address}
             json.dump(list(replicas_view_alive), f)
 
 
@@ -183,7 +191,7 @@ def view_put():
 
     update_replicas_view_alive()
 
-    if target == my_address:
+    if target == src.app.my_address:
         pull_state()
 
     if target in replicas_view_alive:
@@ -222,7 +230,7 @@ def heartbeat_get():
     incoming_addr = request.remote_addr
 
     incoming_addr_with_port = None
-    for addr_with_port in replicas_view_universe:
+    for addr_with_port in src.app.replicas_view_universe:
         addr = addr_with_port.split(':')[0]
         if addr == incoming_addr:
             incoming_addr_with_port = addr_with_port
@@ -231,7 +239,7 @@ def heartbeat_get():
     if not sender_is_replica:
         return jsonify({'status': 'OK'}), 200
 
-    previous_vecs = previously_received_vector_clocks[incoming_addr]
+    previous_vecs = src.app.previously_received_vector_clocks[incoming_addr]
     steady_state = all(
         [incoming_vec == previous_vec for previous_vec in previous_vecs])
     if steady_state:
@@ -239,8 +247,8 @@ def heartbeat_get():
             pull_state(ip=incoming_addr_with_port)
 
     # Double ended queue.  Dequeue last VC from the beginning if at capacity.  Enqueue incoming VC to the end.
-    if (len(previously_received_vector_clocks[incoming_addr]) > previously_received_vector_clocks_CAPACITY):
-        del previously_received_vector_clocks[incoming_addr][0]
-    previously_received_vector_clocks[incoming_addr].append(incoming_vec)
+    if (len(src.app.previously_received_vector_clocks[incoming_addr]) > src.app.previously_received_vector_clocks_CAPACITY):
+        del src.app.previously_received_vector_clocks[incoming_addr][0]
+    src.app.previously_received_vector_clocks[incoming_addr].append(incoming_vec)
 
     return jsonify({'status': 'OK'}), 200

@@ -2,7 +2,6 @@
 from collections import defaultdict
 from flask import abort, Flask, request, jsonify, Response
 from network import HTTPMethods, multicast
-from time import sleep
 import concurrent.futures
 import heartbeat
 import json
