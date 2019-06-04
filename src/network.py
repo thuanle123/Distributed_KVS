@@ -14,11 +14,14 @@ def unicast(address, address_to_uri, http_method=HTTPMethods.GET, timeout=None, 
         if http_method == HTTPMethods.GET:
             resp = requests.get(uri, timeout=timeout, headers=headers)
         elif http_method == HTTPMethods.PUT:
-            resp = requests.put(uri, timeout=timeout, data=data, headers=headers)
+            resp = requests.put(uri, timeout=timeout,
+                                data=data, headers=headers)
         elif http_method == HTTPMethods.POST:
-            resp = requests.post(uri, timeout=timeout, data=data, headers=headers)
+            resp = requests.post(uri, timeout=timeout,
+                                 data=data, headers=headers)
         elif http_method == HTTPMethods.DELETE:
-            resp = requests.delete(uri, timeout=timeout, data=data, headers=headers)
+            resp = requests.delete(uri, timeout=timeout,
+                                   data=data, headers=headers)
         else:
             resp = None
     except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):

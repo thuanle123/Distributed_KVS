@@ -11,8 +11,8 @@ MY_ADDRESS = os.environ['SOCKET_ADDRESS']
 ADDRESSES = init_view()
 FILENAME = '.alive.json'
 ENDPOINT = '/heartbeat'
-INTERVAL = 5 # Run a heartbeat every 0.01 seconds.
-TIMEOUT = 1 # Seconds until heartbeat failure.
+INTERVAL = 5  # Run a heartbeat every 0.01 seconds.
+TIMEOUT = 1  # Seconds until heartbeat failure.
 
 
 def address_to_heartbeat_uri(address):
@@ -43,7 +43,8 @@ def multicast_heartbeat_blocking(addresses):
         timeout=TIMEOUT,
         headers={'VC': json.dumps(get_vector_clock())}
     )
-    unicast_responses = [f.result() for f in concurrent.futures.as_completed(fs)]
+    unicast_responses = [f.result()
+                         for f in concurrent.futures.as_completed(fs)]
     alive = [ur.address for ur in unicast_responses if ur.response is not None and ur.response.status_code == 200]
     logger.info(f'Alive: {alive}')
     return alive
@@ -79,7 +80,8 @@ def run(addresses, filename):
 
 
 if __name__ == '__main__':
-    logging.basicConfig(format='[%(levelname)s] %(asctime)s > %(message)s', datefmt='%d-%b-%y %H:%M:%S')
+    logging.basicConfig(
+        format='[%(levelname)s] %(asctime)s > %(message)s', datefmt='%d-%b-%y %H:%M:%S')
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.INFO)
 
