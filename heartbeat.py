@@ -5,14 +5,19 @@ import json
 import logging
 import os
 import time
+import random
 
 
 MY_ADDRESS = os.environ['SOCKET_ADDRESS']
 ADDRESSES = init_view()
 FILENAME = '.alive.json'
 ENDPOINT = '/heartbeat'
-INTERVAL = 5 # Run a heartbeat every 0.01 seconds.
-TIMEOUT = 1 # Seconds until heartbeat failure.
+INTERVAL = 10 # How often to run heartbeat.
+TIMEOUT = 5 # Seconds until heartbeat failure.
+
+
+def inject_jitter():
+    time.sleep(random.random())
 
 
 def address_to_heartbeat_uri(address):
@@ -20,6 +25,7 @@ def address_to_heartbeat_uri(address):
 
 
 def unicast_heartbeat(address):
+    inject_jitter()
     return unicast(
         address,
         address_to_heartbeat_uri,
