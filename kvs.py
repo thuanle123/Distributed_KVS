@@ -25,7 +25,6 @@ previously_received_vector_clocks_CAPACITY = 1
 
 replicas_view_universe = heartbeat.ADDRESSES
 replicas_view_no_port = [x.split(":")[0] for x in replicas_view_universe]
-vector_clock = {address: 0 for address in replicas_view_no_port}
 
 my_address = heartbeat.MY_ADDRESS
 my_address_no_port = my_address.split(":")[0]
@@ -33,9 +32,47 @@ replicas_view_alive = {my_address}
 replicas_view_alive_filename = heartbeat.FILENAME
 replicas_view_alive_last_read = float('-inf') # When was the last time we read from alive?  Initially never read.
 
-#SHARD_COUNT = int(os.getenv('SHARD_COUNT'))
+vector_clock = {address: 0 for address in replicas_view_no_port}
+
+SHARD_COUNT = int(os.getenv('SHARD_COUNT'))
+shard_view = create_shard_view(replicas_view_universe, SHARD_COUNT)
+
 #shards = {[] for _ in range(SHARD_COUNT)} #I want this to be a dictionary
 #shard_id = None
+# [1, 2, 3, 4, 5]
+# shardcount = 2
+
+class ShardError(Exception):
+    pass
+
+class FaultToleranceError(ShardError):
+    pass
+
+class NodeNotFoundError(ShardError):
+    pass
+
+class ShardNotFoundError(ShardError):
+    pass
+
+class ShardNoResponse(ShardError):
+    pass
+
+def create_shard_view(replicas_view, num_shards):
+    shard_view = [[]] * num_shards # List of SHARD_COUNT lists within it, where list i holds servers in ith shard.
+    deterministic_view = sorted(list(replicas_view))
+    for i, address in deterministic_view:
+        shard_view[i % num_shards].append(address)
+
+    if are_shards_fault_tolerant(shard_view):
+        raise FaultToleranceError
+    return shard_view
+
+def are_shards_fault_tolerant(shard_view):
+    return all([is_shard_fault_tolerant(s) for s in shard_view])
+
+def is_shard_fault_tolerant(shard):
+    MINIMUM_SERVERS_THRESHOLD = 2
+    return len(shard) >= MINIMUM_SERVERS_THRESHOLD
 
 def startup():
     update_vector_clock_file()
@@ -81,48 +118,61 @@ def rebalance_shard():
 # 4 GET requests from the PDF
 # Please double check it too
 
-#TODO
-# Get the shard IDs of the store
-# Format is "shard-ids":"1,2"
-#@app.route(route_shard('/shard-ids'), methods=['GET'])
-def shard_id_get():
-    #ids = "0"
-    #for i in range(1,len(Shards)):
-    #    ids += ',' + str(i)
-    #return jsonify({
-    #   'message':'Shard IDs retrieved succesfully',
-    #   'shard-ids':ids
-    #}),200
-    pass
+@app.route(route_shard('/shard-ids'), methods=['GET'])
+def shard_ids_get():
+    shard_ids = list(range(len(shard_view)))
+    shard_ids_string = ','.join(sorted([str(i) for i in shard_ids]))
+    return jsonify({
+        'message': 'Shard IDs retrieved successfully',
+        'shard-ids': shard_ids_string
+    }), 200
 
-# Get the shard IDs of a node
-#@app.route(route_shard('/node-shard-id'), methods=['GET'])
+# Get the shard ID of a node
+@app.route(route_shard('/node-shard-id'), methods=['GET'])
 def node_id_get():
-    # Need to initialize the node onto the shard first
-    #return jsonify({
-    #    'message':'Shard ID of the node retrieved successfully',
-    #    'shard-id':shard_id
-    #    })
-    pass
+    shard_id = -1
+    for i, shard in enumerate(shard_view):
+        if my_address in shard:
+            shard_id = i
+            break
+
+    if shard_id == -1:
+        raise NodeNotFoundError
+
+    return jsonify({
+        'message': 'Shard ID of the node retrieved successfully',
+        'shard-id': shard_id
+    }), 200
 
 # Get the members of a shard ID
-#@app.route(route_shard('/shard-id-members/<shard-id>'), methods=['GET'])
-def member_id_get():
-    #member_id = int(shard_id)
-    #http://<node-socket-address>/key-value-store-shard/shard-id-members/<shard-id>
-    #{"message":"Members of shard ID retrieved successfully", "shard-id-members":<shard-id-members>} 200
-    #return jsonify({
-    #   'message':'Members of shard ID retrieved successfully',
-    #   'shard-id-members': #VIEW of the -view
-    #   })
-    pass
+@app.route(route_shard('/shard-id-members/<shard_id>'), methods=['GET'])
+def members_id_get(shard_id):
+    try:
+        members = shard_view[shard_id]
+        members_string = ','.join(sorted(members))
+    except IndexError:
+        raise ShardNotFoundError
+
+    return jsonify({
+        'message': 'Members of shard ID retrieved successfully',
+        'shard-id-members': members_string
+    }), 200
 
 # Get the number of keys stored in a shard
-#@app.route(route_shard('/shard-id-key-count/<shard-id>'), methods=['GET'])
-def key_get():
-    #http://<node-socket-address>/key-value-store-shard/shard-id-key-count/<shard-id>
-    #{"message":"Key count of shard ID retrieved successfully", "shard-id-key-count":<shard-id-key-count>} 200
-    pass
+@app.route(route_shard('/shard-id-key-count/<shard_id>'), methods=['GET'])
+def shard_key_get(shard_id):
+    members = shard_view[shard_id]
+    for member in members:
+        response = requests.get('http://' + member + route())
+        if response.status_code == 200:
+            store_with_deliveries = response.json()
+            store = store_with_deliveries['store']
+            return jsonify({
+                'message': 'Key count of shard ID retrieved successfully',
+                'shard-id-key-count': len(store.keys())
+            }), 200
+    raise ShardNoResponse
+
 
 ############# Old Stuff#############3
 def pull_state(ip=None):
@@ -131,13 +181,13 @@ def pull_state(ip=None):
     global store
 
     if ip is not None:
-       response = requests.get('http://' + ip + route())
-       if response.status_code == 200:
-           store_with_deliveries = response.json()
-           store = store_with_deliveries['store']
-           delivery_buffer = store_with_deliveries['delivery_buffer']
-           vector_clock = store_with_deliveries['vector_clock']
-           return
+        response= requests.get('http://' + ip + route())
+        if response.status_code == 200:
+            store_with_deliveries = response.json()
+            store = store_with_deliveries['store']
+            delivery_buffer = store_with_deliveries['delivery_buffer']
+            vector_clock = store_with_deliveries['vector_clock']
+            return
        return
 
     other_replicas = replicas_view_alive.difference({my_address})
