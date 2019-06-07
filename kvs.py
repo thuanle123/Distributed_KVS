@@ -466,6 +466,11 @@ def kvs_get(key):
 @app.route(route('/<key>'), methods=['PUT'])
 def kvs_put(key):
     app.logger.debug(f'==== entered kvs_put({key})')
+    json_data = request.get_json()
+    incoming_addr = request.remote_addr
+    app.logger.debug(f'json_data: {json_data}')
+    app.logger.debug(f'incoming_addr: {incoming_addr}')
+
     app.logger.debug(f'(before) replicas_view_alive: {replicas_view_alive}')
     app.logger.debug(f'(before) shard_view_alive: {shard_view_alive}')
     update_replicas_view_alive()
@@ -495,10 +500,6 @@ def kvs_put(key):
         return (response.text, response.status_code, response.headers.items())
 
     app.logger.debug(f'ids match <=> we can handle this request')
-    json_data = request.get_json()
-    incoming_addr = request.remote_addr
-    app.logger.debug(f'json_data: {json_data}')
-    app.logger.debug(f'incoming_addr: {incoming_addr}')
     # Check here if message from fellow servers
     if incoming_addr == my_address_no_port:
         # Ignore messages sent from itself

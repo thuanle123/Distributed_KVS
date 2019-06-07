@@ -12,8 +12,8 @@ MY_ADDRESS = os.environ['SOCKET_ADDRESS']
 ADDRESSES = init_view()
 FILENAME = '.alive.json'
 ENDPOINT = '/heartbeat'
-INTERVAL = 2 # How often to run heartbeat.
-TIMEOUT = 1 # Seconds until heartbeat failure.
+INTERVAL = 2.5 # How often to run heartbeat.
+TIMEOUT = 2 # Seconds until heartbeat failure.
 
 
 def address_to_heartbeat_uri(address):
@@ -69,7 +69,9 @@ def write_alive(addresses, filename):
             f.seek(0)
             json.dump(list(current_alive), f)
     except (FileNotFoundError, IOError):
-        pass
+        current_alive = {MY_ADDRESS, random_server} if random_server_ok else {MY_ADDRESS}
+        with open(filename, 'w') as f:
+            json.dump(list(current_alive), f)
 
 
 def run(addresses, filename):
