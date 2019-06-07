@@ -512,7 +512,8 @@ def kvs_put(key):
     if hashed_id != my_id:
         app.logger.debug(f'ids do not match <=> key belongs to different shard')
         shard = shard_view_alive[hashed_id][:]
-        app.logger.debug(f'shard: {shard}')        if (len(shard) == 0):
+        app.logger.debug(f'shard: {shard}')
+        if (len(shard) == 0):
             return '', 418
         server = random.randrange(len(shard))
         app.logger.debug(f'server: {server}')
