@@ -500,7 +500,7 @@ def kvs_put(key):
 
     hashed_id = hash(key) % SHARD_COUNT
     if hashed_id != get_my_id():
-        shard = shard_view_alive[hashed_id]
+        shard = shard_view_alive[hashed_id][:]
         if (len(shard) == 0):
             return '', 418
         server = random.randrange(len(shard))
