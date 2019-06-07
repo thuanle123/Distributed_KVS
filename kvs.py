@@ -89,6 +89,7 @@ def startup():
 
     add_replica_fs = broadcast_add_replica()
 
+    """
     def we_exist_in_view(unicast_response):
         http_response = unicast_response.response
         if http_response is None:
@@ -104,6 +105,9 @@ def startup():
     global replicas_view_alive
     replicas_view_alive = set(map(lambda ur: ur.address, unicast_responses_existing))
     replicas_view_alive.add(my_address)
+    """
+
+    sleep(heartbeat.INTERVAL * 2) # Give us two pulses before we start checking (second pulse for insurance).
     update_replicas_view_alive()
 
 # add a node to shard
@@ -266,7 +270,7 @@ def update_replicas_view_alive():
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
                 for dr in deleted_replicas:
                     executor.submit(
-                        unicast,
+                        multicast,
                         replicas_view_alive,
                         lambda address: 'http://' + address + route('-view'),
                         http_method=HTTPMethods.DELETE,
