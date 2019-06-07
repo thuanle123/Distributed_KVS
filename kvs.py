@@ -42,11 +42,17 @@ replicas_view_alive_last_read = float('-inf') # When was the last time we read f
 
 vector_clock = {address: 0 for address in replicas_view_no_port}
 
+# Global shard variables loaded during startup().
+SHARD_COUNT = None
+shard_view_universe = None
+shard_view_universe_no_port = None
+shard_view_alive = None
+
 def create_shard_view(replicas_view, num_shards):
-    shard_view = [[] for _ in range(num_shards)] # List of SHARD_COUNT lists within it, where list i holds servers in ith shard.
-    deterministic_view = sorted(list(replicas_view))
+    shard_view = [set() for _ in range(num_shards)] # List of SHARD_COUNT lists within it, where list i holds servers in ith shard.
+    deterministic_view = sorted(replicas_view)
     for i, address in enumerate(deterministic_view):
-        shard_view[i % num_shards].append(address)
+        shard_view[i % num_shards].add(address)
 
     if not are_shards_fault_tolerant(shard_view):
         raise FaultToleranceError
@@ -58,11 +64,6 @@ def are_shards_fault_tolerant(shard_view):
 def is_shard_fault_tolerant(shard):
     MINIMUM_SERVERS_THRESHOLD = 2
     return len(shard) >= MINIMUM_SERVERS_THRESHOLD
-
-SHARD_COUNT = int(os.getenv('SHARD_COUNT'))
-shard_view_universe = create_shard_view(replicas_view_universe, SHARD_COUNT)
-shard_view_universe_no_port = [[x.split(":")[0] for x in shard] for shard in shard_view_universe]
-shard_view_alive = [[x for x in shard if x in replicas_view_alive] for shard in shard_view_universe]
 
 class ShardError(Exception):
     pass
@@ -80,7 +81,6 @@ class ShardNoResponse(ShardError):
     pass
 
 
-# it's aids that this has to be here. move later if necessary
 def get_my_id():
     shard_id = -1
     for i, shard in enumerate(shard_view_universe):
@@ -90,8 +90,30 @@ def get_my_id():
     return shard_id
 
 def startup():
+    global SHARD_COUNT
+    global shard_view_universe
+    global shard_view_universe_no_port
+
     update_vector_clock_file()
     add_replica_fs = broadcast_add_replica()
+
+    try:
+        SHARD_COUNT = int(os.environ['SHARD_COUNT'])
+        shard_view_universe = create_shard_view(replicas_view_universe, SHARD_COUNT)
+    except:
+        # Pull shard state from another replica.
+        pulled_shard_view = False
+        for address in replicas_view_universe.difference({my_address}):
+            response = requests.get('http://' + address + route_shard())
+            if response.status_code == 200:
+                shard_view_universe = response.json()['shard_view_universe']
+                SHARD_COUNT = len(shard_view_universe)
+                pulled_shard_view = True
+                break
+        if not pulled_shard_view:
+            raise ShardNoResponse
+
+    shard_view_universe_no_port = [{x.split(":")[0] for x in shard} for shard in shard_view_universe]
 
     # Give us two pulses before we start doing anything.
     # First pulse to guarantee a heartbeat was attempted, second pulse for insurance.
@@ -121,6 +143,13 @@ def route(r=''):
 def route_shard(r=''):
     return '/key-value-store-shard' + r
 
+@app.route(route_shard(), methods=['GET'])
+def shards_get():
+    serializable = [list(shard) for shard in shard_view_universe]
+    return jsonify({
+        'shard_view_universe': serializable
+    }), 200
+
 @app.route(route_shard('/shard-ids'), methods=['GET'])
 def shard_ids_get():
     shard_ids = list(range(len(shard_view_universe)))
@@ -132,11 +161,14 @@ def shard_ids_get():
 
 @app.route('/get_shard_view', methods=['GET'])
 def tmp():
+    update_replicas_view_alive()
+    svu_serializable = [list(shard) for shard in shard_view_universe]
+    sva_serializable = [list(shard) for shard in shard_view_alive]
     return jsonify({
         'replicas_view_universe': list(replicas_view_universe),
         'replicas_view_alive': list(replicas_view_alive),
-        'shard_view_universe': list(shard_view_universe),
-        'shard_view_alive': list(shard_view_alive),
+        'shard_view_universe': svu_serializable,
+        'shard_view_alive': sva_serializable,
     })
 
 
@@ -158,31 +190,66 @@ def node_id_get():
 def members_id_get(shard_id):
     try:
         shard_id = int(shard_id)
-        members = shard_view_universe[shard_id]
-        members_string = ','.join(sorted(members))
+        shard = sorted(shard_view_universe[shard_id])
+        members = ','.join(shard)
     except (ValueError, IndexError):
         raise ShardNotFoundError
 
     return jsonify({
         'message': 'Members of shard ID retrieved successfully',
-        'shard-id-members': members_string
+        'shard-id-members': members
     }), 200
 
 # Get the number of keys stored in a shard
 @app.route(route_shard('/shard-id-key-count/<shard_id>'), methods=['GET'])
 def shard_key_get(shard_id):
     shard_id = int(shard_id)
-    members = shard_view_universe[shard_id]
-    for member in members:
-        response = requests.get('http://' + member + route())
-        if response.status_code == 200:
-            store_with_deliveries = response.json()
-            store = store_with_deliveries['store']
-            return jsonify({
-                'message': 'Key count of shard ID retrieved successfully',
-                'shard-id-key-count': len(store.keys())
-            }), 200
+    shard = sorted(shard_view_universe[shard_id])
+    server = random.randrange(len(shard))
+    response = requests.get('http://' + shard[server] + route())
+    if response.status_code == 200:
+        store_with_deliveries = response.json()
+        store_ = store_with_deliveries['store']
+        return jsonify({
+            'message': 'Key count of shard ID retrieved successfully',
+            'shard-id-key-count': len(store_.keys())
+        }), 200
     raise ShardNoResponse
+
+
+@app.route(route_shard('/add-member/<shard_id>'), methods=['PUT'])
+def shard_add_member(shard_id):
+    shard_id = int(shard_id)
+
+    json_data = request.get_json()
+    new_member = json_data['socket-address']
+
+    if new_member in replicas_view_universe and new_member in shard_view_universe:
+        if new_member in shard_view_universe[shard_id]:
+            return jsonify({
+                'message': f'Discarded: {new_member} is already a member of shard {shard_id}'
+            }), 200
+        else:
+            return jsonify({
+                'message': f'Discarded: {new_member} is already a member of another shard'
+            }), 201
+
+    replicas_view_universe.add(new_member)
+    shard_view_universe[shard_id].add(new_member)
+    update_replicas_view_alive()
+
+    # Forward this request to everyone.
+    multicast(
+        replicas_view_universe,
+        lambda address: 'http://' + address + route_shard(f'/add-member/{shard_id}'),
+        timeout=3,
+        data=request.get_data(),
+        headers=request.headers,
+    )
+
+    return jsonify({
+        'message': f'Successfully added node {new_member} to shard {shard_id}',
+    }), 200
 
 ############# Old Stuff#############3
 def pull_state(ip):
@@ -237,7 +304,7 @@ def update_vector_clock_file():
 
 def update_shard_view_alive():
     global shard_view_alive
-    shard_view_alive = [[x for x in shard if x in replicas_view_alive] for shard in shard_view_universe]
+    shard_view_alive = [{x for x in shard if x in replicas_view_alive} for shard in shard_view_universe]
 
 def update_replicas_view_alive():
     global replicas_view_alive
@@ -309,7 +376,7 @@ def send_update_delete(key):
 
 def format_response(message, does_exist=None, error=None, value=None, replaced=None):
     metadata = json.dumps(vector_clock, sort_keys=True)
-    res = {'message': message, 'causal-metadata' : metadata, 'version' : metadata}
+    res = {'message': message, 'causal-metadata' : metadata, 'version' : metadata, 'shard-id': get_my_id()}
 
     if does_exist is not None:
         res['doesExist'] = does_exist
@@ -407,7 +474,7 @@ def kvs_get(key):
 
     hashed_id = int_sha256(key) % SHARD_COUNT
     if hashed_id != get_my_id():
-        shard = shard_view_alive[hashed_id][:]
+        shard = sorted(shard_view_alive[hashed_id])
         if (len(shard) == 0):
             return '', 418
         server = random.randrange(len(shard))
@@ -440,7 +507,7 @@ def kvs_put(key):
     app.logger.debug(f'my_id: {my_id}')
     if hashed_id != my_id:
         app.logger.debug(f'ids do not match <=> key belongs to different shard')
-        shard = shard_view_alive[hashed_id][:]
+        shard = sorted(shard_view_alive[hashed_id])
         app.logger.debug(f'shard: {shard}')
         if (len(shard) == 0):
             return '', 418
@@ -504,7 +571,7 @@ def kvs_delete(key):
     hashed_id = int_sha256(key) % SHARD_COUNT
     my_id = get_my_id()
     if hashed_id != my_id:
-        shard = shard_view_alive[hashed_id][:]
+        shard = sorted(shard_view_alive[hashed_id])
         if (len(shard) == 0):
             return '', 418
         server = random.randrange(len(shard))
@@ -555,8 +622,8 @@ def view_get():
 
 @app.route(route('-view'), methods=['PUT'])
 def view_put():
-    if not is_replica(request.remote_addr):
-        return jsonify(UNAUTHED_REPLICA_ORIGIN), 401
+    #if not is_replica(request.remote_addr):
+    #    return jsonify(UNAUTHED_REPLICA_ORIGIN), 401
 
     request_body = request.get_json()
     target = request_body['socket-address']
@@ -566,7 +633,16 @@ def view_put():
     if target in replicas_view_alive:
         return jsonify(VIEW_PUT_SOCKET_EXISTS), 404
     else:
+        replicas_view_universe.add(target)
         replicas_view_alive.add(target)
+        with open(heartbeat.FILENAME, 'r+') as f:
+            previous_alive = set(json.load(f))
+            if target not in previous_alive:
+                current_alive = previous_alive.union({random_server})
+                f.truncate(0)
+                f.seek(0)
+                json.dump(list(current_alive), f)
+
         return jsonify({
             'message': 'Replica added successfully to the view'}
         ), 200
@@ -574,8 +650,8 @@ def view_put():
 
 @app.route(route('-view'), methods=['DELETE'])
 def view_delete():
-    if not is_replica(request.remote_addr):
-        return jsonify(UNAUTHED_REPLICA_ORIGIN), 401
+    #if not is_replica(request.remote_addr):
+    #    return jsonify(UNAUTHED_REPLICA_ORIGIN), 401
 
     request_body = request.get_json()
     target = request_body['socket-address']
