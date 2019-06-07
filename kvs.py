@@ -155,8 +155,8 @@ def tmp():
         'replicas_view_alive': replicas_view_alive,
         'shard_view': shard_view,
         'shard_view_alive': shard_view_alive,
-        'my_shard_view': my_shard_view',
-        'my_shard_view_no_port': my_shard_view_no_port,
+        'my_shard_view': my_shard_view,
+        'my_shard_view_no_port': my_shard_view_no_port
     })
 
 
