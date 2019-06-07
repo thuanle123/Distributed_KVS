@@ -5,7 +5,6 @@ import json
 import logging
 import os
 import time
-import random
 
 
 MY_ADDRESS = os.environ['SOCKET_ADDRESS']
@@ -16,16 +15,11 @@ INTERVAL = 10 # How often to run heartbeat.
 TIMEOUT = 5 # Seconds until heartbeat failure.
 
 
-def inject_jitter():
-    time.sleep(random.random())
-
-
 def address_to_heartbeat_uri(address):
     return 'http://' + address + ENDPOINT
 
 
 def unicast_heartbeat(address):
-    inject_jitter()
     return unicast(
         address,
         address_to_heartbeat_uri,

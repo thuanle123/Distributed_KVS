@@ -1,13 +1,21 @@
 from collections import namedtuple
 from enum import Enum
 import concurrent.futures
+import random
 import requests
+import time
 
 UnicastResponse = namedtuple('UnicastResponse', ['uri', 'address', 'response'])
 HTTPMethods = Enum('HTTPMethods', 'GET POST PUT DELETE')
 
 
+def inject_jitter():
+    time.sleep(random.random())
+
+
 def unicast(address, address_to_uri, http_method=HTTPMethods.GET, timeout=None, data=None, headers=None):
+    inject_jitter()
+
     uri = address_to_uri(address)
 
     try:

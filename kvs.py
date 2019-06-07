@@ -109,7 +109,7 @@ def startup():
     replicas_view_alive = set(map(lambda ur: ur.address, unicast_responses_existing))
     replicas_view_alive.add(my_address)
     update_replicas_view_alive()
-    pull_state()
+    #pull_state()
 
 # add a node to shard
 # add to a shard with a fewest nodes first
@@ -220,7 +220,7 @@ def pull_state(ip=None):
             return
         return
 
-    other_replicas = replicas_view_alive.difference({my_address})
+    other_replicas = set(my_shard_view).difference({my_address})
     if len(other_replicas) <= 0:
         return
 
@@ -228,7 +228,7 @@ def pull_state(ip=None):
         other_replicas,
         lambda address: 'http://' + address + route(),
         http_method=HTTPMethods.GET,
-        timeout=1
+        timeout=3
     )
     for f in concurrent.futures.as_completed(view_fs):
         unicast_response = f.result()
@@ -249,7 +249,7 @@ def broadcast_add_replica():
         replicas_view_universe,
         lambda address: 'http://' + address + route('-view'),
         http_method=HTTPMethods.PUT,
-        timeout=1,
+        timeout=3,
         data=json.dumps({'socket-address': my_address}),
         headers={'Content-Type': 'application/json'}
     )
@@ -321,7 +321,7 @@ def update_replicas_view_alive():
                         replicas_view_alive,
                         lambda address: 'http://' + address + route('-view'),
                         http_method=HTTPMethods.DELETE,
-                        timeout=1,
+                        timeout=3,
                         data=json.dumps({'socket-address': dr}),
                         headers={'Content-Type': 'application/json'}
                     )
@@ -336,7 +336,7 @@ def update_replicas_view_alive():
                         replicas_view_alive,
                         lambda address: 'http://' + address + route('-view'),
                         http_method=HTTPMethods.PUT,
-                        timeout=1,
+                        timeout=3,
                         data=json.dumps({'socket-address': ar}),
                         headers={'Content-Type': 'application/json'}
                     )
@@ -373,7 +373,7 @@ def send_update_put(key, message):
             my_shard_view,
             lambda address: 'http://' + address + route('/' + key),
             http_method=HTTPMethods.PUT,
-            timeout=1,
+            timeout=3,
             data=json.dumps(message),
             headers=headers
             )
@@ -387,7 +387,7 @@ def send_update_delete(key):
             my_shard_view,
             lambda address: 'http://' + address + route('/' + key),
             http_method=HTTPMethods.DELETE,
-            timeout=1,
+            timeout=3,
             headers=headers
             )
 
@@ -479,15 +479,16 @@ def store_get():
 @app.route(route('/<key>'), methods=['GET'])
 def kvs_get(key):
     update_replicas_view_alive()
+
     hashed_id = hash(key) % SHARD_COUNT
     if hashed_id != get_my_id():
         shard = shard_view_alive[hashed_id][:]
-        while True:
-            server = random.randderange(len(shard))
-            response = requests.get('http://' + shard[server] + route('/' + key))
-            del shard[server]
-            if len(shard) == 0 or response.status_code == 200:
-                return (response.text, response.status_code, response.headers.items())
+        if (len(shard) == 0):
+            return '', 418
+        server = random.randrange(len(shard))
+        response = requests.get('http://' + shard[server] + route('/' + key))
+        return (response.text, response.status_code, response.headers.items())
+
     if key in store:
         return format_response('Retrieved successfully', does_exist=True, value=store[key]), 200
     return format_response('Error in GET', error='Key does not exist', does_exist=False), 404
@@ -496,16 +497,16 @@ def kvs_get(key):
 @app.route(route('/<key>'), methods=['PUT'])
 def kvs_put(key):
     update_replicas_view_alive()
+
     hashed_id = hash(key) % SHARD_COUNT
     if hashed_id != get_my_id():
-        shard = shard_view_alive[hashed_id][:]
-        while True:
-            server = random.randrange(len(shard))
-            #untested
-            response = requests.put('http://' + shard[server] + route('/' + key), headers=request.headers, data=request.get_data())
-            del shard[server]
-            if len(shard) == 0 or response.status_code == 200 or response.status_code == 201:
-                return (response.text, response.status_code, response.headers.items())
+        shard = shard_view_alive[hashed_id]
+        if (len(shard) == 0):
+            return '', 418
+        server = random.randrange(len(shard))
+        response = requests.put('http://' + shard[server] + route('/' + key), headers=request.headers, data=request.get_data())
+        return (response.text, response.status_code, response.headers.items())
+
     json_data = request.get_json()
     incoming_addr = request.remote_addr
     # Check here if message from fellow servers
@@ -539,23 +540,23 @@ def kvs_put(key):
 @app.route(route('/<key>'), methods=['DELETE'])
 def kvs_delete(key):
     update_replicas_view_alive()
+
     hashed_id = hash(key) % SHARD_COUNT
     if hashed_id != get_my_id():
         shard = shard_view_alive[hashed_id][:]
-        while True:
-            server = random.randrange(len(shard))
-            #untested
-            response = requests.delete('http://' + shard[server] + route('/' + key), headers=request.headers, data=request.get_data())
-            del shard[server]
-            if len(shard) == 0 or response.status_code == 200:
-                return (response.text, response.status_code, response.headers.items())
+        if (len(shard) == 0):
+            return '', 418
+        server = random.randrange(len(shard))
+        response = requests.delete('http://' + shard[server] + route('/' + key), headers=request.headers, data=request.get_data())
+        return (response.text, response.status_code, response.headers.items())
+
     # Check here if message from fellow server
     incoming_addr = request.remote_addr
     json_data = request.get_json()
     if incoming_addr == my_address_no_port:
         # Ignore messages sent from itself
         return format_response('Discarded'), 200
-    elif incoming_addr not in my_shard_view_no_port:
+    elif incoming_addr not in my_shard_view_no_port: # Not from my shard.
         # Check for causal metadata
         has_metadata = json_data is not None and 'causal-metadata' in json_data and json_data['causal-metadata'] != ''
         if has_metadata:
@@ -601,8 +602,10 @@ def view_put():
 
     update_replicas_view_alive()
 
+    """
     if target == my_address:
         pull_state()
+    """
 
     if target in replicas_view_alive:
         return jsonify(VIEW_PUT_SOCKET_EXISTS), 404
@@ -651,7 +654,7 @@ def heartbeat_get():
 
     previous_vecs = previously_received_vector_clocks[incoming_addr]
     steady_state = all([incoming_vec == previous_vec for previous_vec in previous_vecs])
-    if steady_state:
+    if steady_state and incoming_addr in my_shard_view_no_port:
         if not can_be_delivered_client(incoming_vec):
             pull_state(ip=incoming_addr_with_port)
 
