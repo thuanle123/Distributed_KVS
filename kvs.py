@@ -12,6 +12,11 @@ import hashlib #to do hashing
 import logging
 import random
 
+def int_sha256(key):
+    key_bytestring = str(key).encode()
+    hex_hash = hashlib.sha256(key_bytestring).hexdigest()
+    return int(hex_hash, 16)
+
 UNAUTHED_REPLICA_ORIGIN = {'error': 'Request must originate from a replica in the view'}
 VIEW_PUT_SOCKET_EXISTS = {
     'error': 'Socket address already exists in the view',
@@ -400,7 +405,7 @@ def store_get():
 def kvs_get(key):
     update_replicas_view_alive()
 
-    hashed_id = hash(key) % SHARD_COUNT
+    hashed_id = int_sha256(key) % SHARD_COUNT
     if hashed_id != get_my_id():
         shard = shard_view_alive[hashed_id][:]
         if (len(shard) == 0):
@@ -429,7 +434,7 @@ def kvs_put(key):
     app.logger.debug(f'(after) shard_view_alive: {shard_view_alive}')
     app.logger.debug(f'shard_view_universe: {shard_view_universe}')
 
-    hashed_id = hash(key) % SHARD_COUNT
+    hashed_id = int_sha256(key) % SHARD_COUNT
     my_id = get_my_id()
     app.logger.debug(f'hashed_id: {hashed_id}')
     app.logger.debug(f'my_id: {my_id}')
@@ -496,7 +501,7 @@ def kvs_put(key):
 def kvs_delete(key):
     update_replicas_view_alive()
 
-    hashed_id = hash(key) % SHARD_COUNT
+    hashed_id = int_sha256(key) % SHARD_COUNT
     my_id = get_my_id()
     if hashed_id != my_id:
         shard = shard_view_alive[hashed_id][:]
