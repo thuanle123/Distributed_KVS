@@ -10,7 +10,9 @@ import time
 
 MY_ADDRESS = os.environ['SOCKET_ADDRESS']
 ADDRESSES = init_view()
-FILENAME = '.alive.json'
+VECTOR_CLOCK_FILENAME = '.vector_clock.json'
+UNIVERSE_FILENAME = '.universe.json'
+ALIVE_FILENAME = '.alive.json'
 ENDPOINT = '/heartbeat'
 INTERVAL = 2.5 # How often to run heartbeat.
 TIMEOUT = 2 # Seconds until heartbeat failure.
@@ -29,8 +31,14 @@ def unicast_heartbeat(address):
     )
 
 
+def get_replicas_view_universe():
+    with open(UNIVERSE_FILENAME, 'r') as f:
+        universe = set(json.load(f))
+    return universe
+
+
 def get_vector_clock():
-    with open('.vector_clock.json', 'r') as f:
+    with open(VECTOR_CLOCK_FILENAME, 'r') as f:
         vector_clock = json.load(f)
     return vector_clock
 
@@ -50,14 +58,14 @@ def multicast_heartbeat_blocking(addresses):
     return alive
 
 
-def write_alive(addresses, filename):
-    deterministic_addresses = sorted(list(addresses))
-    random_server = deterministic_addresses[random.randrange(0, len(deterministic_addresses))]
+def write_alive(universe_filename, alive_filename):
+    deterministic_universe = sorted(get_replicas_view_universe())
+    random_server = deterministic_universe[random.randrange(0, len(deterministic_universe))]
     response = unicast_heartbeat(random_server).response
     random_server_ok = True if response is not None and response.status_code == 200 else False
 
     try:
-        with open(filename, 'r+') as f:
+        with open(alive_filename, 'r+') as f:
             previous_alive = set(json.load(f))
 
             if random_server in previous_alive:
@@ -70,17 +78,17 @@ def write_alive(addresses, filename):
             json.dump(list(current_alive), f)
     except (FileNotFoundError, IOError):
         current_alive = {MY_ADDRESS, random_server} if random_server_ok else {MY_ADDRESS}
-        with open(filename, 'w') as f:
+        with open(alive_filename, 'w') as f:
             json.dump(list(current_alive), f)
 
 
-def run(addresses, filename):
-    logger.info(f'HB universe: {addresses}')
-    logger.info(f'Writing alive to: {filename}')
+def run(universe_filename, alive_filename):
+    logger.info(f'Reading universe from: {universe_filename}')
+    logger.info(f'Writing alive to: {alive_filename}')
     while True:
         start = time.time()
 
-        write_alive(addresses, filename)
+        write_alive(universe_filename, alive_filename)
 
         end = time.time()
         elapsed = end - start
@@ -93,6 +101,15 @@ if __name__ == '__main__':
     logging.basicConfig(format='[%(levelname)s] %(asctime)s > %(message)s', datefmt='%d-%b-%y %H:%M:%S')
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.INFO)
+
+    universe_ready = False
+    while not universe_ready:
+        try:
+            universe = get_replicas_view_universe()
+            if universe is not None:
+                universe_ready = True
+        except:
+            pass
 
     vector_clock_ready = False
     while not vector_clock_ready:
@@ -109,4 +126,4 @@ if __name__ == '__main__':
         unicast_response = unicast_heartbeat(MY_ADDRESS).response
         if unicast_response is not None:
             our_server_online = unicast_response.status_code == 200
-    run(ADDRESSES, FILENAME)
+    run(UNIVERSE_FILENAME, ALIVE_FILENAME)

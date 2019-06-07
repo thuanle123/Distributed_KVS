@@ -32,15 +32,17 @@ previously_received_vector_clocks = defaultdict(list)
 previously_received_vector_clocks_CAPACITY = 1
 
 replicas_view_universe = heartbeat.ADDRESSES
-replicas_view_no_port = [x.split(":")[0] for x in replicas_view_universe]
+replicas_view_no_port = {x.split(":")[0] for x in replicas_view_universe}
+replicas_view_universe_filename = heartbeat.UNIVERSE_FILENAME
 
 my_address = heartbeat.MY_ADDRESS
 my_address_no_port = my_address.split(":")[0]
 replicas_view_alive = {my_address}
-replicas_view_alive_filename = heartbeat.FILENAME
+replicas_view_alive_filename = heartbeat.ALIVE_FILENAME
 replicas_view_alive_last_read = float('-inf') # When was the last time we read from alive?  Initially never read.
 
 vector_clock = {address: 0 for address in replicas_view_no_port}
+vector_clock_filename = heartbeat.VECTOR_CLOCK_FILENAME
 
 # Global shard variables loaded during startup().
 SHARD_COUNT = None
@@ -81,6 +83,8 @@ class ShardNoResponse(ShardError):
     pass
 
 
+
+
 def get_my_id():
     shard_id = -1
     for i, shard in enumerate(shard_view_universe):
@@ -94,7 +98,9 @@ def startup():
     global shard_view_universe
     global shard_view_universe_no_port
 
+    update_replicas_view_universe_file()
     update_vector_clock_file()
+
     add_replica_fs = broadcast_add_replica()
 
     try:
@@ -106,7 +112,7 @@ def startup():
         for address in replicas_view_universe.difference({my_address}):
             response = requests.get('http://' + address + route_shard())
             if response.status_code == 200:
-                shard_view_universe = response.json()['shard_view_universe']
+                shard_view_universe = [set(shard) for shard in response.json()['shard_view_universe']]
                 SHARD_COUNT = len(shard_view_universe)
                 pulled_shard_view = True
                 break
@@ -224,7 +230,12 @@ def shard_add_member(shard_id):
     json_data = request.get_json()
     new_member = json_data['socket-address']
 
-    if new_member in replicas_view_universe and new_member in shard_view_universe:
+    if new_member not in replicas_view_universe:
+        return jsonify({
+            'message': "Node does not exist in our view, can't add to shard"
+        }), 400
+
+    if any([new_member in shard for shard in shard_view_universe]): # Is the new member in some shard?
         if new_member in shard_view_universe[shard_id]:
             return jsonify({
                 'message': f'Discarded: {new_member} is already a member of shard {shard_id}'
@@ -234,14 +245,13 @@ def shard_add_member(shard_id):
                 'message': f'Discarded: {new_member} is already a member of another shard'
             }), 201
 
-    replicas_view_universe.add(new_member)
     shard_view_universe[shard_id].add(new_member)
-    update_replicas_view_alive()
 
     # Forward this request to everyone.
     multicast(
         replicas_view_universe,
         lambda address: 'http://' + address + route_shard(f'/add-member/{shard_id}'),
+        http_method=HTTPMethods.PUT,
         timeout=3,
         data=request.get_data(),
         headers=request.headers,
@@ -298,8 +308,12 @@ def determine_port():
 
     return port
 
+def update_replicas_view_universe_file():
+    with open(replicas_view_universe_filename, 'w') as f:
+        json.dump(sorted(replicas_view_universe), f)
+
 def update_vector_clock_file():
-    with open('.vector_clock.json', 'w') as f:
+    with open(vector_clock_filename, 'w') as f:
         json.dump(vector_clock, f)
 
 def update_shard_view_alive():
@@ -633,12 +647,20 @@ def view_put():
     if target in replicas_view_alive:
         return jsonify(VIEW_PUT_SOCKET_EXISTS), 404
     else:
-        replicas_view_universe.add(target)
+        if target not in replicas_view_universe:
+            target_no_port = target.split(':')[0]
+            vector_clock[target_no_port] = 0
+            update_vector_clock_file()
+            replicas_view_no_port.add(target_no_port)
+            replicas_view_universe.add(target)
+            update_replicas_view_universe_file()
+
         replicas_view_alive.add(target)
-        with open(heartbeat.FILENAME, 'r+') as f:
+
+        with open(replicas_view_alive_filename, 'r+') as f:
             previous_alive = set(json.load(f))
             if target not in previous_alive:
-                current_alive = previous_alive.union({random_server})
+                current_alive = previous_alive.union({target})
                 f.truncate(0)
                 f.seek(0)
                 json.dump(list(current_alive), f)
