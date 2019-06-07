@@ -65,7 +65,7 @@ def get_my_id():
     return shard_id
 
 shard_view_alive = [[x for x in shard if x in replicas_view_alive] for shard in shard_view]
-my_shard_view = shard_view_alive[get_my_id()]
+my_shard_view = shard_view_alive[get_my_id()][:]
 my_shard_view_no_port = [x.split(":")[0] for x in my_shard_view]
 
 #shards = {[] for _ in range(SHARD_COUNT)} #I want this to be a dictionary
@@ -150,7 +150,15 @@ def shard_ids_get():
 
 @app.route('/get_shard_view', methods=['GET'])
 def tmp():
-    return jsonify(shard_view)
+    return jsonify({
+        'replicas_view_universe': replicas_view_universe,
+        'replicas_view_alive': replicas_view_alive,
+        'shard_view': shard_view,
+        'shard_view_alive': shard_view_alive,
+        'my_shard_view': my_shard_view',
+        'my_shard_view_no_port': my_shard_view_no_port,
+    })
+
 
 # Get the shard ID of a node
 @app.route(route_shard('/node-shard-id'), methods=['GET'])
@@ -277,14 +285,17 @@ def update_my_shard_view_no_port():
     temp = []
     for x in my_shard_view:
         temp.append(x.split(':')[0])
-    global my_shard_view_no_port = temp
+    global my_shard_view_no_port
+    my_shard_view_no_port = temp
 
 def update_my_shard_view():
-    global my_shard_view = shard_view_alive[get_my_id()]
+    global my_shard_view
+    my_shard_view = shard_view_alive[get_my_id()][:]
     update_my_shard_view_no_port()
 
 def update_shard_view_alive():
-    global shard_view_alive = [x for x in shard if x in replicas_view_alive] for shard in shard_view]
+    global shard_view_alive
+    shard_view_alive = [[x for x in shard if x in replicas_view_alive] for shard in shard_view]
     update_my_shard_view()
 
 def update_replicas_view_alive():
@@ -470,12 +481,12 @@ def kvs_get(key):
     update_replicas_view_alive()
     hashed_id = hash(key) % SHARD_COUNT
     if hashed_id != get_my_id():
-        shard = shard_view_alive[hashed_id]
+        shard = shard_view_alive[hashed_id][:]
         while True:
-            server = random.randrange(len(shard))
+            server = random.randderange(len(shard))
             response = requests.get('http://' + shard[server] + route('/' + key))
-            shard.remove(server)
-            if len(shard) == 0 || response.status_code == 200:
+            del shard[server]
+            if len(shard) == 0 or response.status_code == 200:
                 return (response.text, response.status_code, response.headers.items())
     if key in store:
         return format_response('Retrieved successfully', does_exist=True, value=store[key]), 200
@@ -487,13 +498,13 @@ def kvs_put(key):
     update_replicas_view_alive()
     hashed_id = hash(key) % SHARD_COUNT
     if hashed_id != get_my_id():
-        shard = shard_view_alive[hashed_id]
+        shard = shard_view_alive[hashed_id][:]
         while True:
             server = random.randrange(len(shard))
             #untested
             response = requests.put('http://' + shard[server] + route('/' + key), headers=request.headers, data=request.get_data())
-            shard.remove(server)
-            if len(shard) == 0 || response.status_code == 200 || response.status_code == 201:
+            del shard[server]
+            if len(shard) == 0 or response.status_code == 200 or response.status_code == 201:
                 return (response.text, response.status_code, response.headers.items())
     json_data = request.get_json()
     incoming_addr = request.remote_addr
@@ -530,13 +541,13 @@ def kvs_delete(key):
     update_replicas_view_alive()
     hashed_id = hash(key) % SHARD_COUNT
     if hashed_id != get_my_id():
-        shard = shard_view_alive[hashed_id]
+        shard = shard_view_alive[hashed_id][:]
         while True:
             server = random.randrange(len(shard))
             #untested
             response = requests.delete('http://' + shard[server] + route('/' + key), headers=request.headers, data=request.get_data())
-            shard.remove(server)
-            if len(shard) == 0 || response.status_code == 200:
+            del shard[server]
+            if len(shard) == 0 or response.status_code == 200:
                 return (response.text, response.status_code, response.headers.items())
     # Check here if message from fellow server
     incoming_addr = request.remote_addr
