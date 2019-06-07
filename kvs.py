@@ -86,28 +86,11 @@ def get_my_id():
 
 def startup():
     update_vector_clock_file()
-
     add_replica_fs = broadcast_add_replica()
 
-    """
-    def we_exist_in_view(unicast_response):
-        http_response = unicast_response.response
-        if http_response is None:
-            return False
-        added_to_view = http_response.status_code == 200
-        preexisted = http_response.status_code == 401 and http_response.json() == VIEW_PUT_SOCKET_EXISTS
-        return added_to_view or preexisted
-
-    # Get alive replicas from our broadcast.
-    unicast_responses = [f.result() for f in concurrent.futures.as_completed(add_replica_fs)]
-    unicast_responses_existing = filter(we_exist_in_view, unicast_responses)
-
-    global replicas_view_alive
-    replicas_view_alive = set(map(lambda ur: ur.address, unicast_responses_existing))
-    replicas_view_alive.add(my_address)
-    """
-
-    sleep(heartbeat.INTERVAL * 2) # Give us two pulses before we start checking (second pulse for insurance).
+    # Give us two pulses before we start doing anything.
+    # First pulse to guarantee a heartbeat was attempted, second pulse for insurance.
+    sleep(heartbeat.INTERVAL * 2)
     update_replicas_view_alive()
 
 # add a node to shard
@@ -257,46 +240,10 @@ def update_replicas_view_alive():
         modified_since_read = os.path.getmtime(replicas_view_alive_filename) >= replicas_view_alive_last_read
         if not modified_since_read:
             return
-
-        old_view = replicas_view_alive
         with open(replicas_view_alive_filename, 'r') as f:
             replicas_view_alive = set(json.load(f))
-            deleted_replicas = old_view.difference(replicas_view_alive)
-            added_replicas = replicas_view_alive.difference(old_view)
-
-        if len(deleted_replicas) > 0:
-            # For each deleted replica,
-            max_workers = min(len(deleted_replicas), 10)
-            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                for dr in deleted_replicas:
-                    executor.submit(
-                        multicast,
-                        replicas_view_alive,
-                        lambda address: 'http://' + address + route('-view'),
-                        http_method=HTTPMethods.DELETE,
-                        timeout=3,
-                        data=json.dumps({'socket-address': dr}),
-                        headers={'Content-Type': 'application/json'}
-                    )
-
-        if len(added_replicas) > 0:
-            # For each deleted replica,
-            max_workers = min(len(added_replicas), 10)
-            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                for ar in added_replicas:
-                    executor.submit(
-                        multicast,
-                        replicas_view_alive,
-                        lambda address: 'http://' + address + route('-view'),
-                        http_method=HTTPMethods.PUT,
-                        timeout=3,
-                        data=json.dumps({'socket-address': ar}),
-                        headers={'Content-Type': 'application/json'}
-                    )
-
     except (FileNotFoundError, IOError):
         replicas_view_alive = set()
-
     replicas_view_alive.add(my_address)
     update_shard_view_alive()
 
@@ -352,7 +299,7 @@ def send_update_delete(key):
             http_method=HTTPMethods.DELETE,
             timeout=3,
             headers=headers
-            )
+    )
 
 
 def format_response(message, does_exist=None, error=None, value=None, replaced=None):
