@@ -55,25 +55,9 @@ def is_shard_fault_tolerant(shard):
     return len(shard) >= MINIMUM_SERVERS_THRESHOLD
 
 SHARD_COUNT = int(os.getenv('SHARD_COUNT'))
-shard_view = create_shard_view(replicas_view_universe, SHARD_COUNT)
-
-# it's aids that this has to be here. move later if necessary
-def get_my_id():
-    shard_id = -1
-    for i, shard in enumerate(shard_view):
-        if my_address in shard:
-            shard_id = i
-            break
-    return shard_id
-
-shard_view_alive = [[x for x in shard if x in replicas_view_alive] for shard in shard_view]
-my_shard_view = shard_view_alive[get_my_id()][:]
-my_shard_view_no_port = [x.split(":")[0] for x in my_shard_view]
-
-#shards = {[] for _ in range(SHARD_COUNT)} #I want this to be a dictionary
-#shard_id = None
-# [1, 2, 3, 4, 5]
-# shardcount = 2
+shard_view_universe = create_shard_view(replicas_view_universe, SHARD_COUNT)
+shard_view_universe_no_port = [[x.split(":")[0] for x in shard] for shard in shard_view_universe]
+shard_view_alive = [[x for x in shard if x in replicas_view_alive] for shard in shard_view_universe]
 
 class ShardError(Exception):
     pass
@@ -89,6 +73,16 @@ class ShardNotFoundError(ShardError):
 
 class ShardNoResponse(ShardError):
     pass
+
+
+# it's aids that this has to be here. move later if necessary
+def get_my_id():
+    shard_id = -1
+    for i, shard in enumerate(shard_view_universe):
+        if my_address in shard:
+            shard_id = i
+            break
+    return shard_id
 
 def startup():
     update_vector_clock_file()
@@ -111,7 +105,6 @@ def startup():
     replicas_view_alive = set(map(lambda ur: ur.address, unicast_responses_existing))
     replicas_view_alive.add(my_address)
     update_replicas_view_alive()
-    #pull_state()
 
 # add a node to shard
 # add to a shard with a fewest nodes first
@@ -129,11 +122,6 @@ def delete_from_shard():
 def rebalance_shard():
     pass
 
-# Add all the route here so we don't have to scroll
-# move it down when we are done
-# 4 GET requests from the PDF
-# Please double check it too
-
 
 def route(r=''):
     return '/key-value-store' + r
@@ -143,7 +131,7 @@ def route_shard(r=''):
 
 @app.route(route_shard('/shard-ids'), methods=['GET'])
 def shard_ids_get():
-    shard_ids = list(range(len(shard_view)))
+    shard_ids = list(range(len(shard_view_universe)))
     shard_ids_string = ','.join(sorted([str(i) for i in shard_ids]))
     return jsonify({
         'message': 'Shard IDs retrieved successfully',
@@ -155,10 +143,8 @@ def tmp():
     return jsonify({
         'replicas_view_universe': list(replicas_view_universe),
         'replicas_view_alive': list(replicas_view_alive),
-        'shard_view': list(shard_view),
+        'shard_view_universe': list(shard_view_universe),
         'shard_view_alive': list(shard_view_alive),
-        'my_shard_view': list(my_shard_view),
-        'my_shard_view_no_port': list(my_shard_view_no_port)
     })
 
 
@@ -180,7 +166,7 @@ def node_id_get():
 def members_id_get(shard_id):
     try:
         shard_id = int(shard_id)
-        members = shard_view[shard_id]
+        members = shard_view_universe[shard_id]
         members_string = ','.join(sorted(members))
     except (ValueError, IndexError):
         raise ShardNotFoundError
@@ -194,7 +180,7 @@ def members_id_get(shard_id):
 @app.route(route_shard('/shard-id-key-count/<shard_id>'), methods=['GET'])
 def shard_key_get(shard_id):
     shard_id = int(shard_id)
-    members = shard_view[shard_id]
+    members = shard_view_universe[shard_id]
     for member in members:
         response = requests.get('http://' + member + route())
         if response.status_code == 200:
@@ -207,44 +193,18 @@ def shard_key_get(shard_id):
     raise ShardNoResponse
 
 ############# Old Stuff#############3
-def pull_state(ip=None):
+def pull_state(ip):
     global vector_clock
     global delivery_buffer
     global store
 
-    if ip is not None:
-        response = requests.get('http://' + ip + route(), timeout=3)
-        if response is None and response.status_code == 200:
-            store_with_deliveries = response.json()
-            store = store_with_deliveries['store']
-            delivery_buffer = store_with_deliveries['delivery_buffer']
-            vector_clock = store_with_deliveries['vector_clock']
-            return
+    response = requests.get('http://' + ip + route(), timeout=3)
+    if response is None and response.status_code == 200:
+        store_with_deliveries = response.json()
+        store = store_with_deliveries['store']
+        delivery_buffer = store_with_deliveries['delivery_buffer']
+        vector_clock = store_with_deliveries['vector_clock']
         return
-
-    other_replicas = set(my_shard_view).difference({my_address})
-    if len(other_replicas) <= 0:
-        return
-
-    view_fs = multicast(
-        other_replicas,
-        lambda address: 'http://' + address + route(),
-        http_method=HTTPMethods.GET,
-        timeout=3
-    )
-    for f in concurrent.futures.as_completed(view_fs):
-        unicast_response = f.result()
-        resp = unicast_response.response
-        if resp is not None and resp.status_code == 200:
-            store_with_deliveries = resp.json()
-            # Don't update if we're ahead.
-            if can_be_delivered_client(store_with_deliveries['vector_clock']):
-                continue
-            store = store_with_deliveries['store']
-            delivery_buffer = store_with_deliveries['delivery_buffer']
-            vector_clock = store_with_deliveries['vector_clock']
-            return
-
 
 def broadcast_add_replica():
     return multicast(
@@ -283,22 +243,9 @@ def update_vector_clock_file():
     with open('.vector_clock.json', 'w') as f:
         json.dump(vector_clock, f)
 
-def update_my_shard_view_no_port():
-    temp = []
-    for x in my_shard_view:
-        temp.append(x.split(':')[0])
-    global my_shard_view_no_port
-    my_shard_view_no_port = temp
-
-def update_my_shard_view():
-    global my_shard_view
-    my_shard_view = shard_view_alive[get_my_id()][:]
-    update_my_shard_view_no_port()
-
 def update_shard_view_alive():
     global shard_view_alive
-    shard_view_alive = [[x for x in shard if x in replicas_view_alive] for shard in shard_view]
-    update_my_shard_view()
+    shard_view_alive = [[x for x in shard if x in replicas_view_alive] for shard in shard_view_universe]
 
 def update_replicas_view_alive():
     global replicas_view_alive
@@ -319,7 +266,7 @@ def update_replicas_view_alive():
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
                 for dr in deleted_replicas:
                     executor.submit(
-                        multicast,
+                        unicast,
                         replicas_view_alive,
                         lambda address: 'http://' + address + route('-view'),
                         http_method=HTTPMethods.DELETE,
@@ -371,8 +318,13 @@ def send_update_put(key, message):
     vector_clock[my_address_no_port] += 1
     update_vector_clock_file()
     headers = {'VC': json.dumps(vector_clock), 'Content-Type': 'application/json'}
+
+    my_id = get_my_id()
+    if my_id == -1:
+        return
+
     multicast(
-            my_shard_view,
+            shard_view_universe[my_id],
             lambda address: 'http://' + address + route('/' + key),
             http_method=HTTPMethods.PUT,
             timeout=3,
@@ -385,8 +337,13 @@ def send_update_delete(key):
     vector_clock[my_address_no_port] += 1
     update_vector_clock_file()
     headers = {'VC': json.dumps(vector_clock), 'Content-Type': 'application/json'}
+
+    my_id = get_my_id()
+    if my_id == -1:
+        return
+
     multicast(
-            my_shard_view,
+            shard_view_universe[my_id],
             lambda address: 'http://' + address + route('/' + key),
             http_method=HTTPMethods.DELETE,
             timeout=3,
@@ -414,7 +371,12 @@ def format_response(message, does_exist=None, error=None, value=None, replaced=N
 
 def can_be_delivered_client(incoming_vec):
     update_replicas_view_alive()
-    for x in my_shard_view:
+
+    my_id = get_my_id()
+    if my_id == -1:
+        return False
+
+    for x in shard_view_alive[my_id]:
         cur_addr = x.split(":")[0]
         if vector_clock[cur_addr] < incoming_vec[cur_addr]:
             return False
@@ -422,7 +384,12 @@ def can_be_delivered_client(incoming_vec):
 
 def can_be_delivered(incoming_vec, incoming_addr):
     update_replicas_view_alive()
-    for x in my_shard_view:
+
+    my_id = get_my_id()
+    if my_id == -1:
+        return False
+
+    for x in shard_view_alive[my_id]:
         cur_addr = x.split(":")[0]
         if cur_addr == incoming_addr:
             continue
@@ -500,10 +467,11 @@ def kvs_get(key):
 def kvs_put(key):
     app.logger.debug(f'==== entered kvs_put({key})')
     app.logger.debug(f'(before) replicas_view_alive: {replicas_view_alive}')
-    app.logger.debug(f'(before) replicas_view_alive: {shard_view_alive}')
+    app.logger.debug(f'(before) shard_view_alive: {shard_view_alive}')
     update_replicas_view_alive()
     app.logger.debug(f'(after) replicas_view_alive: {replicas_view_alive}')
-    app.logger.debug(f'(after) replicas_view_alive: {shard_view_alive}')
+    app.logger.debug(f'(after) shard_view_alive: {shard_view_alive}')
+    app.logger.debug(f'shard_view_universe: {shard_view_universe}')
 
     hashed_id = hash(key) % SHARD_COUNT
     my_id = get_my_id()
@@ -531,13 +499,12 @@ def kvs_put(key):
     incoming_addr = request.remote_addr
     app.logger.debug(f'json_data: {json_data}')
     app.logger.debug(f'incoming_addr: {incoming_addr}')
-    app.logger.debug(f'my_shard_view_no_port: {my_shard_view_no_port}')
     # Check here if message from fellow servers
     if incoming_addr == my_address_no_port:
         # Ignore messages sent from itself
         app.logger.debug(f'Request was from ourself. Discarding...')
         return format_response('Discarded'), 200
-    elif incoming_addr not in my_shard_view_no_port:
+    elif incoming_addr not in shard_view_universe_no_port[my_id]:
         app.logger.debug(f'Request originated outside our shard')
         # Check for causal metadata
         has_metadata = json_data is not None and 'causal-metadata' in json_data and json_data['causal-metadata'] != ''
@@ -578,7 +545,8 @@ def kvs_delete(key):
     update_replicas_view_alive()
 
     hashed_id = hash(key) % SHARD_COUNT
-    if hashed_id != get_my_id():
+    my_id = get_my_id()
+    if hashed_id != my_id:
         shard = shard_view_alive[hashed_id][:]
         if (len(shard) == 0):
             return '', 418
@@ -592,7 +560,7 @@ def kvs_delete(key):
     if incoming_addr == my_address_no_port:
         # Ignore messages sent from itself
         return format_response('Discarded'), 200
-    elif incoming_addr not in my_shard_view_no_port: # Not from my shard.
+    elif incoming_addr not in shard_view_universe_no_port[my_id]: # Not from my shard.
         # Check for causal metadata
         has_metadata = json_data is not None and 'causal-metadata' in json_data and json_data['causal-metadata'] != ''
         if has_metadata:
@@ -637,11 +605,6 @@ def view_put():
     target = request_body['socket-address']
 
     update_replicas_view_alive()
-
-    """
-    if target == my_address:
-        pull_state()
-    """
 
     if target in replicas_view_alive:
         return jsonify(VIEW_PUT_SOCKET_EXISTS), 404
@@ -690,9 +653,10 @@ def heartbeat_get():
 
     previous_vecs = previously_received_vector_clocks[incoming_addr]
     steady_state = all([incoming_vec == previous_vec for previous_vec in previous_vecs])
-    if steady_state and incoming_addr in my_shard_view_no_port:
+    my_id = get_my_id()
+    if steady_state and my_id != -1 and incoming_addr in shard_view_universe[my_id]:
         if not can_be_delivered_client(incoming_vec):
-            pull_state(ip=incoming_addr_with_port)
+            pull_state(incoming_addr_with_port)
 
     # Double ended queue.  Dequeue last VC from the beginning if at capacity.  Enqueue incoming VC to the end.
     if (len(previously_received_vector_clocks[incoming_addr]) > previously_received_vector_clocks_CAPACITY):
