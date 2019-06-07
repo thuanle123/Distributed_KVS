@@ -151,12 +151,12 @@ def shard_ids_get():
 @app.route('/get_shard_view', methods=['GET'])
 def tmp():
     return jsonify({
-        'replicas_view_universe': replicas_view_universe,
-        'replicas_view_alive': replicas_view_alive,
-        'shard_view': shard_view,
-        'shard_view_alive': shard_view_alive,
-        'my_shard_view': my_shard_view,
-        'my_shard_view_no_port': my_shard_view_no_port
+        'replicas_view_universe': list(replicas_view_universe),
+        'replicas_view_alive': list(replicas_view_alive),
+        'shard_view': list(shard_view),
+        'shard_view_alive': list(shard_view_alive),
+        'my_shard_view': list(my_shard_view),
+        'my_shard_view_no_port': list(my_shard_view_no_port)
     })
 
 
