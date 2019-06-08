@@ -147,8 +147,23 @@ def route(r=''):
 def route_shard(r=''):
     return '/key-value-store-shard' + r
 
-@app.route(route('/union-store'))
-def
+
+def partition_store():
+    shard_to_partition_map = defaultdict(dict)
+    for k, v in store.items():
+        shard_id = int_sha256(k) % SHARD_COUNT
+        shard_to_partition_map[shard_id][k] = v
+    return dict(shard_to_partition_map)
+
+
+@app.route(route('/union-store'), methods=['PUT'])
+def union_store():
+    json_data = request.get_json()
+    store.update(json_data['partition'])
+    return jsonify({
+        'message': 'Updated store successfully'
+    }), 200
+
 
 @app.route(route_shard('/reshard'), methods=['PUT'])
 def reshard():
@@ -184,12 +199,14 @@ def reshard():
     global store
     store = {}
 
+    sleep(2)
+
     for shard_id, partition in partitions.items():
         multicast(
             shard_view_universe[shard_id],
             lambda a: 'http://' + a + route('/union-store'), # Create endpoint to extend store with another store in one request.
             http_method=HTTPMethods.PUT,
-            data=json.dumps(partition),
+            data=json.dumps({'partition': partition}),
             headers={'Content-Type': 'application/json'},
             timeout=3
         )
