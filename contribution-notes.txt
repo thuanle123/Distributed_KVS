@@ -1,1 +1,7 @@
-Todo
+We all met up together and worked out the concepts in general,
+and with regards to the assignment specs.  We did pair programming
+and developed alongside each other to implement (re)sharding.  We also
+debugged issues from the last assignment (which only showed up in this assignment
+due to running more replicas and thus more messages being transmitted) like
+servers being overloaded from broadcasted heartbeat requests and the random
+seed of the hash function causing infinite delivering and forwarding due to cycles.
