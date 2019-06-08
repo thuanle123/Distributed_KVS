@@ -124,23 +124,6 @@ def startup():
     sleep(heartbeat.INTERVAL * 2)
     update_replicas_view_alive()
 
-# add a node to shard
-# add to a shard with a fewest nodes first
-def add_to_shard():
-    #position = 0
-    #shards[position].append(ip)
-    pass
-
-# delete a node from a shard
-def delete_from_shard():
-    pass
-
-# this only execute if CLIENT requests it
-# IDEA: remove a shard from a max node and add it into a min node
-def rebalance_shard():
-    pass
-
-
 def route(r=''):
     return '/key-value-store' + r
 
