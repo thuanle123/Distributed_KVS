@@ -147,21 +147,24 @@ def route(r=''):
 def route_shard(r=''):
     return '/key-value-store-shard' + r
 
+@app.route(route('/union-store'))
+def
+
 @app.route(route_shard('/reshard'), methods=['PUT'])
 def reshard():
     global shard_view_universe
 
     json_data = request.get_json()
-    shard_count = json_data['shard-count']
 
     incoming_addr = request.remote_addr
     if incoming_addr not in replicas_view_universe_no_port: # From client.
+        shard_count = json_data['shard-count']
         shard_view_universe = create_shard_view(replicas_view_universe, shard_count)
         multicast(
             replicas_view_universe,
             lambda a: 'http://' + a + route_shard('/reshard'),
             http_method=HTTPMethods.PUT,
-            data=json.dumps([list(s) for s in shard_view_universe]),
+            data=json.dumps({'shard_view_universe': [list(s) for s in shard_view_universe])})
             headers={'Content-Type': 'application/json'},
             timeout=3
         )
@@ -172,7 +175,7 @@ def reshard():
     for shard_id, partition in partitions.items():
         multicast(
             shard_view_universe[shard_id],
-            lambda a: 'http://' + a + route('/extend'), # Create endpoint to extend store with another store in one request.
+            lambda a: 'http://' + a + route('/union-store'), # Create endpoint to extend store with another store in one request.
             http_method=HTTPMethods.PUT,
             data=json.dumps(partition),
             headers={'Content-Type': 'application/json'},
