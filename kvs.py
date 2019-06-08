@@ -158,8 +158,8 @@ def shards_get():
 
 @app.route(route_shard('/shard-ids'), methods=['GET'])
 def shard_ids_get():
-    shard_ids = list(range(len(shard_view_universe)))
-    shard_ids_string = ','.join(sorted([str(i) for i in shard_ids]))
+    shard_ids = sorted(range(len(shard_view_universe)))
+    shard_ids_string = ','.join([str(i) for i in shard_ids])
     return jsonify({
         'message': 'Shard IDs retrieved successfully',
         'shard-ids': shard_ids_string
@@ -188,7 +188,7 @@ def node_id_get():
 
     return jsonify({
         'message': 'Shard ID of the node retrieved successfully',
-        'shard-id': shard_id
+        'shard-id': str(shard_id)
     }), 200
 
 # Get the members of a shard ID
@@ -390,7 +390,7 @@ def send_update_delete(key):
 
 def format_response(message, does_exist=None, error=None, value=None, replaced=None):
     metadata = json.dumps(vector_clock, sort_keys=True)
-    res = {'message': message, 'causal-metadata' : metadata, 'version' : metadata, 'shard-id': get_my_id()}
+    res = {'message': message, 'causal-metadata' : metadata, 'version' : metadata, 'shard-id': str(get_my_id())}
 
     if does_exist is not None:
         res['doesExist'] = does_exist
@@ -502,80 +502,47 @@ def kvs_get(key):
 
 @app.route(route('/<key>'), methods=['PUT'])
 def kvs_put(key):
-    app.logger.debug(f'==== entered kvs_put({key})')
     json_data = request.get_json()
     incoming_addr = request.remote_addr
-    app.logger.debug(f'json_data: {json_data}')
-    app.logger.debug(f'incoming_addr: {incoming_addr}')
 
-    app.logger.debug(f'(before) replicas_view_alive: {replicas_view_alive}')
-    app.logger.debug(f'(before) shard_view_alive: {shard_view_alive}')
     update_replicas_view_alive()
-    app.logger.debug(f'(after) replicas_view_alive: {replicas_view_alive}')
-    app.logger.debug(f'(after) shard_view_alive: {shard_view_alive}')
-    app.logger.debug(f'shard_view_universe: {shard_view_universe}')
 
     hashed_id = int_sha256(key) % SHARD_COUNT
     my_id = get_my_id()
-    app.logger.debug(f'hashed_id: {hashed_id}')
-    app.logger.debug(f'my_id: {my_id}')
     if hashed_id != my_id:
-        app.logger.debug(f'ids do not match <=> key belongs to different shard')
         shard = sorted(shard_view_alive[hashed_id])
-        app.logger.debug(f'shard: {shard}')
         if (len(shard) == 0):
             return '', 418
         server = random.randrange(len(shard))
-        app.logger.debug(f'server: {server}')
-        app.logger.debug(f'Sending request to http://{shard[server] + route("/" + key)}:')
-        app.logger.debug(f'\trequest.headers: {request.headers}')
-        app.logger.debug(f'\trequest.get_data(): {request.get_data()}')
         response = requests.put('http://' + shard[server] + route('/' + key), headers=request.headers, data=request.get_data())
-        app.logger.debug(f'\tresponse.text: {response.text}')
-        app.logger.debug(f'\tresponse.status_code: {response.status_code}')
-        app.logger.debug(f'\tresponse.headers.items(): {response.headers.items()}')
         return (response.text, response.status_code, response.headers.items())
 
-    app.logger.debug(f'ids match <=> we can handle this request')
     # Check here if message from fellow servers
     if incoming_addr == my_address_no_port:
         # Ignore messages sent from itself
-        app.logger.debug(f'Request was from ourself. Discarding...')
         return format_response('Discarded'), 200
     elif incoming_addr not in shard_view_universe_no_port[my_id]:
-        app.logger.debug(f'Request originated outside our shard')
         # Check for causal metadata
         has_metadata = json_data is not None and 'causal-metadata' in json_data and json_data['causal-metadata'] != ''
         if has_metadata:
             while not can_be_delivered_client(json.loads(json_data['causal-metadata'])):
-                app.logger.debug(f"Can't deliver request yet, waiting for causal metadata to be synced")
                 sleep(5)
         # Forward message here
-        app.logger.debug(f'Sending update PUT')
         send_update_put(key, json_data)
-        app.logger.debug(f'Attempting to deliver PUT')
         return attempt_deliver_put_message(key, json_data)
     else:
-        app.logger.debug(f'Request was from another server inside our shard')
         # Check vector clock here. If out of order, cache
         incoming_vec = json.loads(request.headers.get('VC'))
-        app.logger.debug(f'Incoming vector clock')
         if can_be_delivered(incoming_vec, incoming_addr):
-            app.logger.debug(f'We can deliver.  Updating vector clock...')
             # deliver message
             vector_clock[incoming_addr] += 1
             update_vector_clock_file()
-            app.logger.debug(f'Attempting to deliver PUT message')
             out = attempt_deliver_put_message(key, json_data)
             # deliver all messages in buffer
-            app.logger.debug(f'Delivering from buffer')
             deliver_from_buffer()
             return out
         else:
-            app.logger.debug(f'Cannot deliver message.  Adding to delivery buffer...')
             delivery_buffer.append([incoming_vec, ['PUT', incoming_addr, key, json_data]])
-            app.logger.debug(f'delivery_buffer: {delivery_buffer}')
-            app.logger.debug(f'Cached successfully.')
             return format_response('Cached successfully'), 200
 
 @app.route(route('/<key>'), methods=['DELETE'])
