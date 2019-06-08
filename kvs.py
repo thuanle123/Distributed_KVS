@@ -155,7 +155,7 @@ def reshard():
     json_data = request.get_json()
 
     incoming_addr = request.remote_addr
-    if incoming_addr not in replicas_view_universe_no_port: # From client.
+    if incoming_addr not in replicas_view_no_port: # From client.
         shard_count = json_data['shard-count']
 
         try:
@@ -169,15 +169,16 @@ def reshard():
             replicas_view_universe,
             lambda a: 'http://' + a + route_shard('/reshard'),
             http_method=HTTPMethods.PUT,
-            data=json.dumps({'shard_view_universe': [list(s) for s in shard_view_universe])})
+            data=json.dumps({'shard_view_universe': [list(s) for s in shard_view_universe]}),
             headers={'Content-Type': 'application/json'},
             timeout=3
         )
     else: # From replica.
-        shard_view_universe = [set(s) for s in json_data['shard_view_universe']
+        shard_view_universe = [set(s) for s in json_data['shard_view_universe']]
 
     global SHARD_COUNT
     SHARD_COUNT = len(shard_view_universe)
+
     global vector_clock
     vector_clock = {address: 0 for address in replicas_view_no_port}
 
@@ -189,6 +190,7 @@ def reshard():
     delivery_buffer = []
     global store
     store = {}
+
     sleep(2) # Give time for servers doing resharding to also clear their store.
 
     for shard_id, partition in partitions.items():
@@ -200,6 +202,10 @@ def reshard():
             headers={'Content-Type': 'application/json'},
             timeout=3
         )
+
+    return jsonify({
+        'message': 'Resharding done successfully'
+    }), 200
 
 @app.route(route_shard(), methods=['GET'])
 def shards_get():
@@ -374,14 +380,17 @@ def update_shard_view_alive():
 
 def update_replicas_view_alive():
     global replicas_view_alive
-    try:
-        modified_since_read = os.path.getmtime(replicas_view_alive_filename) >= replicas_view_alive_last_read
-        if not modified_since_read:
-            return
-        with open(replicas_view_alive_filename, 'r') as f:
-            replicas_view_alive = set(json.load(f))
-    except (FileNotFoundError, IOError):
-        replicas_view_alive = set()
+    while True:
+        try:
+            modified_since_read = os.path.getmtime(replicas_view_alive_filename) >= replicas_view_alive_last_read
+            if not modified_since_read:
+                return
+            with open(replicas_view_alive_filename, 'r') as f:
+                replicas_view_alive = set(json.load(f))
+        except (FileNotFoundError, IOError, json.decoder.JSONDecodeError):
+            #replicas_view_alive = set()
+            sleep(heartbeat.INTERVAL)
+        break
     replicas_view_alive.add(my_address)
     update_shard_view_alive()
 
@@ -676,13 +685,19 @@ def view_put():
 
         replicas_view_alive.add(target)
 
-        with open(replicas_view_alive_filename, 'r+') as f:
-            previous_alive = set(json.load(f))
-            if target not in previous_alive:
-                current_alive = previous_alive.union({target})
-                f.truncate(0)
-                f.seek(0)
-                json.dump(list(current_alive), f)
+        while True:
+            try:
+                with open(replicas_view_alive_filename, 'r+') as f:
+                    previous_alive = set(json.load(f))
+                    if target not in previous_alive:
+                        current_alive = previous_alive.union({target})
+                        f.truncate(0)
+                        f.seek(0)
+                        json.dump(list(current_alive), f)
+            except (FileNotFoundError, IOError):
+                sleep(heartbeat.INTERVAL)
+            break
+
 
         return jsonify({
             'message': 'Replica added successfully to the view'}

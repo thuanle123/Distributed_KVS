@@ -119,6 +119,9 @@ if __name__ == '__main__':
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.INFO)
 
+    with open(ALIVE_FILENAME, 'w') as f:
+        json.dump([], f)
+
     universe_ready = False
     while not universe_ready:
         try:
