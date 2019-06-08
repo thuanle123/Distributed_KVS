@@ -169,9 +169,21 @@ def reshard():
             timeout=3
         )
     else: # From replica.
-        TODO
+        shard_view_universe = [set(s) for s in json_data['shard_view_universe']
+    global SHARD_COUNT
+    SHARD_COUNT = len(shard_view_universe)
+    global vector_clock
+    vector_clock = {address: 0 for address in replicas_view_no_port}
 
+    # Copies all data in store to partitions to be sent out to other shards
     partitions = partition_store()
+
+    # Clears its own delivery buffer and store
+    global delivery_buffer
+    delivery_buffer = []
+    global store
+    store = {}
+
     for shard_id, partition in partitions.items():
         multicast(
             shard_view_universe[shard_id],
