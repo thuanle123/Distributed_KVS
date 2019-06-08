@@ -174,7 +174,14 @@ def reshard():
     incoming_addr = request.remote_addr
     if incoming_addr not in replicas_view_universe_no_port: # From client.
         shard_count = json_data['shard-count']
-        shard_view_universe = create_shard_view(replicas_view_universe, shard_count)
+
+        try:
+            shard_view_universe = create_shard_view(replicas_view_universe, shard_count)
+        except FaultToleranceError:
+            return jsonify({
+                'message': 'Not enough nodes to provide fault-tolerance with the given shard count!'
+            }), 400
+
         multicast(
             replicas_view_universe,
             lambda a: 'http://' + a + route_shard('/reshard'),
@@ -185,6 +192,7 @@ def reshard():
         )
     else: # From replica.
         shard_view_universe = [set(s) for s in json_data['shard_view_universe']
+
     global SHARD_COUNT
     SHARD_COUNT = len(shard_view_universe)
     global vector_clock
@@ -198,8 +206,7 @@ def reshard():
     delivery_buffer = []
     global store
     store = {}
-
-    sleep(2)
+    sleep(2) # Give time for servers doing resharding to also clear their store.
 
     for shard_id, partition in partitions.items():
         multicast(
