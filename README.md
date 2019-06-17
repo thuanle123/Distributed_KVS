@@ -16,8 +16,36 @@ build this project.
        - /key-value-store-shard/add-member/<shard-id>
        - /key-value-store-shard/reshard
 
-2. /key-value-store-view
-   - Support GET, PUT, DELETE request
+2. **/key-value-store-view**
+     - Support GET, PUT, DELETE request
 
-3. /key-value-store/<key>
-   - Support GET, PUT and DELETE request
+3. **/key-value-store/<key>**
+     - Support GET, PUT and DELETE request
+
+# Setup
+
+* You will need to install docker to be able to run this project
+* [On Window](https://docs.docker.com/docker-for-windows/install/)
+* [On Mac](https://docs.docker.com/docker-for-mac/install/)
+* [On Linux](https://linuxize.com/post/how-to-install-and-use-docker-on-ubuntu-18-04/)
+* Then run this command to see if it is installed successfully
+```
+   docker -v
+   Docker version 18.09.6, build 481bc77
+```
+* Run this script to build and run 6 containers with 2 initial shards
+* This script will also create a subnet as well as a Docker image
+```
+   chmod +x build.sh
+   ./build.sh
+```
+
+# Removal
+
+The following command will remove all the subnet, as well as stopping and
+removing all containers
+```
+   chmod +x clean.sh
+   ./clean.sh
+```
+
