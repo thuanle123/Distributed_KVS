@@ -10,16 +10,16 @@ build this project.
 1. **/key-value-store-shard**
      - GET request
        - /key-value-store-shard/node-shard-id
-       - /key-value-store-shard/shard-id-members/\<shard_id>\
-       - /key-value-store-shard/shard-id-key-count/\<shard_id>\
+       - /key-value-store-shard/shard-id-members/\<shard_id>
+       - /key-value-store-shard/shard-id-key-count/\<shard_id>
      - PUT request
-       - /key-value-store-shard/add-member/<shard_id>
+       - /key-value-store-shard/add-member/\<shard_id>
        - /key-value-store-shard/reshard
 
 2. **/key-value-store-view**
      - Support GET, PUT, DELETE request
 
-3. **/key-value-store/\<key>\**
+3. **/key-value-store/\<key>**
      - Support GET, PUT and DELETE request
 
 # Setup
@@ -44,8 +44,8 @@ chmod +x build.sh
 # Usage
 * You can now send GET, PUT, DELETE requests to all the endpoints above
 
-## **GET shard IDs of a store**
-  - Say we have 7 nodes and 3 shards
+## 1. **GET shard IDs of a store**
+Say we have 7 nodes and 3 shards
 ```
 curl --request GET --header "Content-Type: application/json" --write-out "%{http_code}\n" http://localhost:8082/key-value-store-shard/shard-ids
 ```
@@ -54,36 +54,68 @@ curl --request GET --header "Content-Type: application/json" --write-out "%{http
 {"message":"Shard IDs retrieved successfully","shard-ids":"0,1,2"}
 200
 ```
-**GET shard ID of a node**
-  - Say we have 7 nodes with 3 shards
+## 2. **GET shard ID of a node**
+Say we have 7 nodes with 3 shards
 ```
-curl --request GET --header "Content-Type: application/json" --write-out "%{http_code}\n" http://10.10.0.2:8082/key-value-store-shard/node-shard-id
+curl --request GET --header "Content-Type: application/json" --write-out "%{http_code}\n" http://localhost:8082/key-value-store-shard/node-shard-id
 ```
 **Response**
 ```
 {"message":"Shard ID of the node retrieved successfully","shard-id":"0"}
 200
 ```
-**GET shard ID members**
-  - Say we have 7 nodes with 3 shards, after running consistent hashing we might have
+## **GET shard ID members**
+Say we have 7 nodes with 3 shards, after running consistent hashing we might have
 ```
-curl --request GET --header "Content-Type: application/json" --write-out "%{http_code}\n" http://10.10.0.2:8082/key-value-store-shard/shard-id-members/0
+curl --request GET --header "Content-Type: application/json" --write-out "%{http_code}\n" http://localhost:8082/key-value-store-shard/shard-id-members/0
 ```
-Response
+**Response**
 ```
 {"message":"Members of shard ID retrieved successfully","shard-id-members":"10.10.0.2:8080,10.10.0.5:8080,10.10.0.8:8080"}
 200
 ```
 **GET key count in a shard**
-  - Say we have 7 nodes with 3 shards and 600 keys, in which shard 0 contains 204 keys, shard 1 contains 182 keys and shard 2 contains 214 keys
+Say we have 7 nodes with 3 shards and 600 keys, in which shard 0 contains 204 keys, shard 1 contains 182 keys and shard 2 contains 214 keys
 ```
-curl --request GET --header "Content-Type: application/json" --write-out "%{http_code}\n"
-http://10.10.0.2:8082/key-value-store-shard/shard-id-key-count/0
+curl --request GET --header "Content-Type: application/json" --write-out "%{http_code}\n" http://localhost:8082/key-value-store-shard/shard-id-key-count/0
 ```
 **Response**
 ```
 {"message":"Key count of shard ID retrieved successfully","shard-id-key-count":204}
 200
+```
+## **Add a new node into a shard**
+Add a new node node7 with socket address 10.10.0.8:8082 to shard 1
+```
+Start a container without the SHARD_COUNT environment variable
+
+docker run -p 8088:8080 --net=mynet --ip=10.10.0.8 --name="node7" -e SOCKET_ADDRESS="10.10.0.8:8080"
+-e VIEW="10.10.0.2:8080,10.10.0.3:8080,10.10.0.4:8080,10.10.0.5:8080,10.10.0.6:8080,10.10.0.7:8080,
+10.10.0.8:8080" kvs-image
+
+then run
+
+curl --request PUT --header "Content-Type: application/json" --write-out "%{http_code}\n" --data '{"socket-address": "10.10.0.8:8082"}' http://localhost:8082/key-value-store-shard/add-member/1
+```
+## **Reshard a key-value store**
+Say we have 6 nodes and 2 shards with 4 nodes on 1 shard and 2 nodes on the other
+A node on shard 2 fails, so the client send a reshard request with a shard count of 2
+```
+curl --request PUT --header "Content-Type: application/json" --write-out "%{http_code}\n" --data '{"shard-count": 2 }' http://localhost:8082/key-value-store-shard/reshard
+```
+**Response**
+```
+{"message":"Resharding done successfully"}
+200
+```
+**Invalid resharding (5 nodes with 3 shard counts), send error
+```
+curl --request PUT --header "Content-Type: application/json" --write-out "%{http_code}\n" --data '{"shard-count": 3 }' http://localhost:8082/key-value-store-shard/reshard
+```
+**Response**
+```
+{"message":"Not enough nodes to provide fault-tolerance with the given shard count!"}
+400
 ```
 # Removal
 
