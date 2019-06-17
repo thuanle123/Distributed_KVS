@@ -7,17 +7,17 @@ build this project.
 
 # Endpoints support
 
-1. /key-value-store-shard
-  * GET request
-    * /key-value-store-shard/node-shard-id
-    * /key-value-store-shard/shard-id-members/<shard-id>
-    * /key-value-store-shard/shard-id-key-count/<shard-id>
-  * PUT request
-    * /key-value-store-shard/add-member/<shard-id>
-    * /key-value-store-shard/reshard
+1. **/key-value-store-shard**
+     - GET request
+       - /key-value-store-shard/node-shard-id
+       - /key-value-store-shard/shard-id-members/<shard-id>
+       - /key-value-store-shard/shard-id-key-count/<shard-id>
+     - PUT request
+       - /key-value-store-shard/add-member/<shard-id>
+       - /key-value-store-shard/reshard
 
 2. /key-value-store-view
-  * Support GET, PUT, DELETE request
+   - Support GET, PUT, DELETE request
 
 3. /key-value-store/<key>
-  * Support GET, PUT and DELETE request
+   - Support GET, PUT and DELETE request
