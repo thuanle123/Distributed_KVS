@@ -10,16 +10,16 @@ build this project.
 1. **/key-value-store-shard**
      - GET request
        - /key-value-store-shard/node-shard-id
-       - /key-value-store-shard/shard-id-members/<shard-id>
-       - /key-value-store-shard/shard-id-key-count/<shard-id>
+       - /key-value-store-shard/shard-id-members/\<shard_id>\
+       - /key-value-store-shard/shard-id-key-count/\<shard_id>\
      - PUT request
-       - /key-value-store-shard/add-member/<shard-id>
+       - /key-value-store-shard/add-member/<shard_id>
        - /key-value-store-shard/reshard
 
 2. **/key-value-store-view**
      - Support GET, PUT, DELETE request
 
-3. **/key-value-store/<key>**
+3. **/key-value-store/\<key>\**
      - Support GET, PUT and DELETE request
 
 # Setup
@@ -44,34 +44,47 @@ chmod +x build.sh
 # Usage
 * You can now send GET, PUT, DELETE requests to all the endpoints above
 
-1. GET shard IDs of a store
-   - Say we have 7 nodes and 3 shards
+## **GET shard IDs of a store**
+  - Say we have 7 nodes and 3 shards
 ```
 curl --request GET --header "Content-Type: application/json" --write-out "%{http_code}\n" http://localhost:8082/key-value-store-shard/shard-ids
 ```
-Response
+**Response**
 ```
-{"message":"Shard IDs retrieved successfully","shard-ids":"0,1,2"} 200
+{"message":"Shard IDs retrieved successfully","shard-ids":"0,1,2"}
+200
 ```
-2. GET shard ID of a node
-   - Say we have 7 nodes with 3 shards
+**GET shard ID of a node**
+  - Say we have 7 nodes with 3 shards
 ```
 curl --request GET --header "Content-Type: application/json" --write-out "%{http_code}\n" http://10.10.0.2:8082/key-value-store-shard/node-shard-id
 ```
-Response
+**Response**
 ```
 {"message":"Shard ID of the node retrieved successfully","shard-id":"0"}
+200
 ```
-3. GET shard ID members
-   - Say we have 7 nodes with 3 shards, after running consistent hashing we might have
+**GET shard ID members**
+  - Say we have 7 nodes with 3 shards, after running consistent hashing we might have
 ```
 curl --request GET --header "Content-Type: application/json" --write-out "%{http_code}\n" http://10.10.0.2:8082/key-value-store-shard/shard-id-members/0
 ```
 Response
 ```
 {"message":"Members of shard ID retrieved successfully","shard-id-members":"10.10.0.2:8080,10.10.0.5:8080,10.10.0.8:8080"}
+200
 ```
-
+**GET key count in a shard**
+  - Say we have 7 nodes with 3 shards and 600 keys, in which shard 0 contains 204 keys, shard 1 contains 182 keys and shard 2 contains 214 keys
+```
+curl --request GET --header "Content-Type: application/json" --write-out "%{http_code}\n"
+http://10.10.0.2:8082/key-value-store-shard/shard-id-key-count/0
+```
+**Response**
+```
+{"message":"Key count of shard ID retrieved successfully","shard-id-key-count":204}
+200
+```
 # Removal
 
 * The following command will remove all the subnet, as well as stopping and
