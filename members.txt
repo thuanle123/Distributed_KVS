@@ -1,6 +1,0 @@
-Team Python Romeo members:
-
-Allston Mickey - amickey
-Kai Ergin - kergin
-Kyle O'Brien - kdobrien
-Thuan Le - gile

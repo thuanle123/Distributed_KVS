@@ -4,7 +4,7 @@ import time
 import os
 
 ######################## initialize variables ################################################
-subnetName = "assignment4-net"
+subnetName = "mynet"
 subnetAddress = "10.10.0.0/16"
 
 nodeIpList = ["10.10.0.2", "10.10.0.3", "10.10.0.4", "10.10.0.5", "10.10.0.6", "10.10.0.7"]
@@ -30,16 +30,16 @@ def createSubnet(subnetAddress, subnetName):
     time.sleep(2)
 
 def buildDockerImage():
-    command = "docker build -t assignment4-img ."
+    command = "docker build -t kvs-image ."
     os.system(command)
 
 def runInstance(hostPort, ipAddress, subnetName, instanceName):
-    command = "docker run -d -p " + hostPort + ":8080 --net=" + subnetName + " --ip=" + ipAddress + " --name=" + instanceName + " -e SOCKET_ADDRESS=" + ipAddress + ":8080" + " -e VIEW=" + view + " -e SHARD_COUNT=" + str(shardCount) + " assignment4-img"
+    command = "docker run -d -p " + hostPort + ":8080 --net=" + subnetName + " --ip=" + ipAddress + " --name=" + instanceName + " -e SOCKET_ADDRESS=" + ipAddress + ":8080" + " -e VIEW=" + view + " -e SHARD_COUNT=" + str(shardCount) + " kvs-image"
     os.system(command)
     time.sleep(20)
 
 def runAdditionalInstance(hostPort, ipAddress, subnetName, instanceName, newView):
-    command = "docker run -d -p " + hostPort + ":8080 --net=" + subnetName + " --ip=" + ipAddress + " --name=" + instanceName + " -e SOCKET_ADDRESS=" + ipAddress + ":8080" + " -e VIEW=" + newView  + " assignment4-img"
+    command = "docker run -d -p " + hostPort + ":8080 --net=" + subnetName + " --ip=" + ipAddress + " --name=" + instanceName + " -e SOCKET_ADDRESS=" + ipAddress + ":8080" + " -e VIEW=" + newView  + " kvs-image"
     os.system(command)
     time.sleep(20)
 
@@ -60,7 +60,7 @@ def disconnectFromNetwork(subnetName, instanceName):
 
 ################################# Unit Test Class ############################################################
 
-class TestHW3(unittest.TestCase):
+class Tests(unittest.TestCase):
 
     shardIdList = []
     shardsMemberList = []

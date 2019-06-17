@@ -8,7 +8,7 @@ import json
 import os
 import sys
 import requests
-import hashlib #to do hashing
+import hashlib
 import logging
 import random
 
@@ -130,7 +130,6 @@ def route(r=''):
 def route_shard(r=''):
     return '/key-value-store-shard' + r
 
-
 def partition_store():
     shard_to_partition_map = defaultdict(dict)
     for k, v in store.items():
@@ -207,12 +206,14 @@ def reshard():
         'message': 'Resharding done successfully'
     }), 200
 
+
 @app.route(route_shard(), methods=['GET'])
 def shards_get():
     serializable = [list(shard) for shard in shard_view_universe]
     return jsonify({
         'shard_view_universe': serializable
     }), 200
+
 
 @app.route(route_shard('/shard-ids'), methods=['GET'])
 def shard_ids_get():
@@ -222,6 +223,7 @@ def shard_ids_get():
         'message': 'Shard IDs retrieved successfully',
         'shard-ids': shard_ids_string
     }), 200
+
 
 @app.route('/get_shard_view', methods=['GET'])
 def tmp():
@@ -236,7 +238,6 @@ def tmp():
     })
 
 
-# Get the shard ID of a node
 @app.route(route_shard('/node-shard-id'), methods=['GET'])
 def node_id_get():
     shard_id = get_my_id()
@@ -249,7 +250,7 @@ def node_id_get():
         'shard-id': str(shard_id)
     }), 200
 
-# Get the members of a shard ID
+
 @app.route(route_shard('/shard-id-members/<shard_id>'), methods=['GET'])
 def members_id_get(shard_id):
     try:
@@ -264,7 +265,7 @@ def members_id_get(shard_id):
         'shard-id-members': members
     }), 200
 
-# Get the number of keys stored in a shard
+
 @app.route(route_shard('/shard-id-key-count/<shard_id>'), methods=['GET'])
 def shard_key_get(shard_id):
     shard_id = int(shard_id)
@@ -319,7 +320,7 @@ def shard_add_member(shard_id):
         'message': f'Successfully added node {new_member} to shard {shard_id}',
     }), 200
 
-############# Old Stuff#############3
+
 def pull_state(ip):
     global vector_clock
     global delivery_buffer
@@ -343,11 +344,9 @@ def broadcast_add_replica():
         headers={'Content-Type': 'application/json'}
     )
 
-
 def is_replica(ip):
     replica_ips = {address.split(':')[0] for address in replicas_view_universe}
     return ip in replica_ips
-
 
 def determine_port():
     """
@@ -394,7 +393,6 @@ def update_replicas_view_alive():
     replicas_view_alive.add(my_address)
     update_shard_view_alive()
 
-
 def add_replica_alive(new_address):
     global replicas_view_alive
     try:
@@ -410,7 +408,6 @@ def add_replica_alive(new_address):
         with open(replicas_view_alive_filename, 'w') as f:
             replicas_view_alive = {my_address, new_address}
             json.dump(list(replicas_view_alive), f)
-
 
 def send_update_put(key, message):
     vector_clock[my_address_no_port] += 1
@@ -430,7 +427,6 @@ def send_update_put(key, message):
             headers=headers
             )
 
-
 def send_update_delete(key):
     vector_clock[my_address_no_port] += 1
     update_vector_clock_file()
@@ -447,7 +443,6 @@ def send_update_delete(key):
             timeout=3,
             headers=headers
     )
-
 
 def format_response(message, does_exist=None, error=None, value=None, replaced=None):
     metadata = json.dumps(vector_clock, sort_keys=True)
@@ -543,6 +538,7 @@ def store_get():
     resp = {'store': store, 'delivery_buffer': delivery_buffer, 'vector_clock': vector_clock}
     return jsonify(resp), 200
 
+
 @app.route(route('/<key>'), methods=['GET'])
 def kvs_get(key):
     update_replicas_view_alive()
@@ -606,6 +602,7 @@ def kvs_put(key):
             delivery_buffer.append([incoming_vec, ['PUT', incoming_addr, key, json_data]])
             return format_response('Cached successfully'), 200
 
+
 @app.route(route('/<key>'), methods=['DELETE'])
 def kvs_delete(key):
     update_replicas_view_alive()
@@ -649,6 +646,7 @@ def kvs_delete(key):
         else:
             delivery_buffer.append([incoming_vec, ['DELETE', incoming_addr, key]])
             return format_response('Cached successfully'), 200
+
 
 @app.route(route('-view'), methods=['GET'])
 def view_get():
