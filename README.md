@@ -145,6 +145,34 @@ curl --request DELETE --header "Content-Type: application/json" --write-out "%{h
 {"error":"Socket address does not exist in the view","message":"Error in DELETE"}
 404
 ```
+## 9. **PUT a key into the store**
+```
+curl --request PUT --header "Content-Type: application/json" --write-out "%{http_code}\n" --data '{"value": "", "causal-metadata": ""}' http://localhost:8082/key-value-store/key1
+```
+**Response**
+```
+{"causal-metadata":"{\"10.10.0.2\": 1, \"10.10.0.3\": 0, \"10.10.0.4\": 0, \"10.10.0.5\": 0, \"10.10.0.6\": 0, \"10.10.0.7\": 0}","message":"Added successfully","replaced":false,"shard-id":"0","version":"{\"10.10.0.2\": 1, \"10.10.0.3\": 0, \"10.10.0.4\": 0, \"10.10.0.5\": 0, \"10.10.0.6\": 0, \"10.10.0.7\": 0}"}
+201
+```
+## 10. **GET a key from the store**
+```
+curl --request GET --header "Content-Type: application/json" --write-out "%{http_code}\n" http://localhost:8082/key-value-store/key1
+```
+**Response**
+```
+{"causal-metadata":"{\"10.10.0.2\": 2, \"10.10.0.3\": 0, \"10.10.0.4\": 0, \"10.10.0.5\": 0, \"10.10.0.6\": 0, \"10.10.0.7\": 0}","doesExist":true,"message":"Retrieved successfully","shard-id":"0","value":"","version":"{\"10.10.0.2\": 2, \"10.10.0.3\": 0, \"10.10.0.4\": 0, \"10.10.0.5\": 0, \"10.10.0.6\": 0, \"10.10.0.7\": 0}"}
+200
+```
+## 11. **DELETE a key from the store**
+```
+curl --request DELETE --header "Content-Type: application/json" --write-out "%{http_code}\n" --data '{"causal-metadata": ""}' http://localhost:8082/key-value-store/key1
+```
+**Response**
+```
+{"causal-metadata":"{\"10.10.0.2\": 3, \"10.10.0.3\": 0, \"10.10.0.4\": 0, \"10.10.0.5\": 0, \"10.10.0.6\": 0, \"10.10.0.7\": 0}","doesExist":true,"message":"Deleted successfully","shard-id":"0","version":"{\"10.10.0.2\": 3, \"10.10.0.3\": 0, \"10.10.0.4\": 0, \"10.10.0.5\": 0, \"10.10.0.6\": 0, \"10.10.0.7\": 0}"}
+200
+```
+The causal-metadata holds the vector clock of a particular server.
 # Removal
 
 * The following command will remove all the subnet, as well as stopping and

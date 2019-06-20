@@ -102,7 +102,7 @@ class Tests(unittest.TestCase):
 
     ########################## Run tests #######################################################
 
-    def test_a_get_shard_ids(self):
+    def get_shard_ids(self):
         time.sleep(10)
 
         print("\n###################### Getting Shard IDs ######################\n")
@@ -130,7 +130,7 @@ class Tests(unittest.TestCase):
 
         self.shardIdList += shardIdsFromNode1.split(",")
 
-    def test_b_shard_id_members(self):
+    def shard_id_members(self):
 
         print("\n###################### Getting the Members of Shard IDs ######################\n")
 
@@ -157,7 +157,7 @@ class Tests(unittest.TestCase):
         self.shardsMemberList += [shard2Members]
 
 
-    def test_c_node_shard_id(self):
+    def node_shard_id(self):
 
         print("\n###################### Getting the Shard ID of the nodes ######################\n")
 
@@ -207,7 +207,7 @@ class Tests(unittest.TestCase):
             self.assertTrue(nodeSocketAddressList[5] in self.shardsMemberList[1].split(","))
 
 
-    def test_d_put_key_value_operation(self):
+    def put_key_value_operation(self):
 
         print("\n###################### Putting keys/values to the store ######################\n")
 
@@ -228,7 +228,7 @@ class Tests(unittest.TestCase):
 
             time.sleep(1)
 
-    def test_e_get_key_value_operation(self):
+    def get_key_value_operation(self):
 
         time.sleep(10)
 
@@ -246,7 +246,7 @@ class Tests(unittest.TestCase):
             value = responseInJson["value"]
             self.assertEqual(value, "value" + str(counter))
 
-    def test_f_shard_key_count(self):
+    def shard_key_count(self):
 
         print("\n###################### Getting key count of each shard ######################\n")
 
@@ -280,7 +280,7 @@ class Tests(unittest.TestCase):
         self.assertGreater(shard2KeyCount, minKeyCount)
         self.assertLess(shard2KeyCount, maxKeyCount)
 
-    def test_g_add_new_node(self):
+    def add_new_node(self):
 
         shard2 = self.shardIdList[1]
 
@@ -335,14 +335,14 @@ class Tests(unittest.TestCase):
 
         self.assertEqual(shard2KeyCountFromNode7, shard2KeyCountFromNode3)
 
-    def test_h_impossible_reshard(self):
+    def impossible_reshard(self):
 
         print("\n###################### Doing Impossible Resharding ######################\n")
 
         response = requests.put('http://localhost:8083/key-value-store-shard/reshard', json={'shard-count': 10})
         self.assertEqual(response.status_code, 400)
 
-    def test_i_possible_reshard(self):
+    def possible_reshard(self):
 
         print("\n###################### Doing Resharding ######################\n")
 

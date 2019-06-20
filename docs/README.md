@@ -23,8 +23,3 @@ to all other servers. The second stage involves copying and clearing the
 entire KVS and rehashing all the keys. All keys are then sent to their new
 shard.
 
-# Acknowledgment
-
-* We all met up together and worked out the concepts in general, and with regards to the project specs.
-* We did pair programming and developed alongside each other.
-* Special thanks Professor Lindsey Kuper and TA Reza Nasirigerdeh
